@@ -139,7 +139,8 @@ curl -X POST http://127.0.0.1:8022/divinations \
     "method": "manual",
     "question": "这次考试能过吗？",
     "numbers": [1, 2, 3, 4, 2, 1],
-    "time": "2026-07-02T11:00:00"
+    "time": "2026-07-02T11:00:00",
+    "generate_markdown": true
   }'
 
 # 2) coin：模拟三枚铜钱抛掷六次（编码规则见下方"铜钱起卦编码"）
@@ -148,7 +149,8 @@ curl -X POST http://127.0.0.1:8022/divinations \
   -d '{
     "method": "coin",
     "question": "今日运势如何？",
-    "time": "2026-07-02T11:00:00"
+    "time": "2026-07-02T11:00:00",
+    "generate_markdown": true
   }'
 
 # 3) time：传统时间起卦（按年月日时计算卦象）
@@ -167,7 +169,8 @@ curl -X POST http://127.0.0.1:8022/divinations \
   -d '{
     "method": "random",
     "question": "随便问问",
-    "time": "2026-07-02T11:00:00"
+    "time": "2026-07-02T11:00:00",
+    "generate_markdown": true
   }'
 
 # 通用：按 ID 读已生成的 Markdown
