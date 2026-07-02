@@ -24,26 +24,38 @@ liuyao_agent/
 │   ├── server.py             #   FastAPI app 入口
 │   ├── deps.py               #   依赖注入
 │   └── routes/
-│       ├── health.py         #   GET /health 健康检查
-│       └── divination.py     #   POST /divinations 起卦解卦
+│       ├── health.py         #   GET /health
+│       └── divination.py     #   解卦相关路由
 │
-├── core/                     # 核心业务逻辑（无 LLM 依赖的纯算法层）
+├── core/                     # 核心业务（无 LLM 依赖的纯算法层）
+│   ├── calendar.py           #   地支计算（年月日时 → 地支）
+│   ├── hexagrams.py          #   64 卦卦宫数据 + 编码转换
+│   ├── wangshuai.py          #   爻旺衰判断
+│   ├── xunkong.py            #   旬空计算
+│   ├── liushen.py            #   六兽（青龙/朱雀/...）
+│   ├── liuqin.py             #   六亲（父母/兄弟/...）
+│   ├── bianhua.py            #   动爻 / 变卦生成
 │   ├── qigua.py              #   起卦算法（手动 / 时间 / 铜钱 / 随机）
-│   ├── paipan.py             #   排盘逻辑（本卦、变卦、六亲、六神、世应）
-│   └── hexagrams.py          #   六十四卦基础数据
+│   ├── paipan.py             #   排盘主函数 arrange_hexagram
+│   └── markdown.py           #   排盘结果 → 格式化 Markdown 渲染
 │
-├── schema/                   # Pydantic 数据模型（API 请求/响应）
-│   └── divination.py         #   起卦请求、卦象、爻、排盘、解卦结果
+├── schema/                   # Pydantic 数据模型（API 请求 / 响应）
+│   └── divination.py
 │
-├── utils/                    # 通用工具（外部依赖/纯函数）
+├── utils/                    # 通用工具（外部依赖 / 纯函数）
 │   ├── bazi.py               #   公历转八字（基于 lunar_python）
 │   ├── logger.py             #   结构化日志
 │   └── llm_client.py         #   LLM 客户端抽象接口
 │
 ├── config/                   # 全局配置
-│   └── settings.py           #   从 .env 读取，支持 Pydantic Settings
+│   └── settings.py           #   从 .env 读取
 │
-├── data/                     # 静态数据（六十四卦 JSON、爻辞文本等）
+├── data/                     # 静态数据 + 解卦记录
+│   ├── hexagram_texts.py     #   64 卦卦辞 + 爻辞
+│   ├── divination_store.py   #   解卦结果 JSON / Markdown 存储
+│   ├── divinations_json/     #   每个解卦一个 JSON（运行时生成）
+│   └── divinations_md/       #   每个解卦一个 Markdown（运行时生成）
+│
 ├── logs/                     # 运行日志
 ├── tests/                    # 单元测试
 │
@@ -87,49 +99,109 @@ cp .env.example .env
 ```bash
 python main.py
 # 或
-uvicorn api.server:app --reload --host 0.0.0.0 --port 8000
+uvicorn api.server:app --reload --host 127.0.0.1 --port 8022
 ```
 
-启动后访问 http://localhost:8000/docs 查看 Swagger API 文档。
-
-### 4. 调用示例
-
-```bash
-# 健康检查
-curl http://localhost:8000/health
-
-# 时间起卦（示例）
-curl -X POST http://localhost:8000/divinations \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "method": "time",
-    "question": "最近几周会找到工作吗？",
-    "solar_year": 2026,
-    "solar_month": 7,
-    "solar_day": 2,
-    "hour": 11
-  }'
-```
-
-## 路线图
-
-项目按以下顺序逐步搭建：
-
-- [x] **阶段 0：基础架构** — FastAPI 框架 + 核心目录分层 + 数据模型
-- [ ] **阶段 1：起卦 + 排盘** — 在 `core/qigua.py` 和 `core/paipan.py` 中实现确定性算法
-- [ ] **阶段 2：六十四卦数据** — 录入六十四卦基础数据到 `core/hexagrams.py` 或 `data/`
-- [ ] **阶段 3：单 Agent 解卦** — 接入 LLM，先用单 Agent + 提示词完成端到端解卦
-- [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent（如取用神、动变分析、综合解读）
-- [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
-- [ ] **阶段 6：会话与历史** — 引入持久化存储与会话管理
+启动后访问 http://127.0.0.1:8022/docs 查看 Swagger API 文档。
 
 ## API 端点
 
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
-| `POST` | `/divinations` | 创建一次起卦 + 解卦请求 |
-| `GET` | `/divinations/{id}` | 查询解卦结果 |
+| `POST` | `/divinations` | 起卦 + 排盘，落盘 JSON；可选 `generate_markdown=true` 一步生成 Markdown |
+| `GET` | `/divinations` | 列出所有解卦 ID |
+| `GET` | `/divinations/{id}` | 按 ID 查询解卦结果 |
+| `POST` | `/divinations/{id}/markdown` | 渲染并落盘 Markdown |
+| `GET` | `/divinations/{id}/markdown` | 读取已生成的 Markdown |
+| `DELETE` | `/divinations/{id}` | 删除记录（JSON + MD） |
+
+### 起卦方式
+
+| 方式 | 必传参数 | 说明 |
+|---|---|---|
+| `manual` | `numbers: [1..4]×6` | 手动输入爻位编码 |
+| `time` | `time: ISO datetime` | 传统时间起卦 |
+| `coin` | 无 | 模拟三枚铜钱抛掷 |
+| `random` | 无 | 一键随机生成 |
+
+**爻位编码**：`1`=少阴，`2`=少阳，`3`=纯阳（动爻），`4`=纯阴（动爻）。
+
+### 调用示例
+
+四种起卦方式均通过 `POST /divinations` 调用，区别仅在 `method` 与额外参数。
+
+```bash
+# 1) manual：手动输入 6 个爻位编码（1=少阴 2=少阳 3=纯阳 4=纯阴）
+curl -X POST http://127.0.0.1:8022/divinations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "method": "manual",
+    "question": "这次考试能过吗？",
+    "numbers": [1, 2, 3, 4, 2, 1],
+    "time": "2026-07-02T11:00:00"
+  }'
+
+# 2) coin：模拟三枚铜钱抛掷六次（编码规则见下方"铜钱起卦编码"）
+curl -X POST http://127.0.0.1:8022/divinations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "method": "coin",
+    "question": "今日运势如何？",
+    "time": "2026-07-02T11:00:00"
+  }'
+
+# 3) time：传统时间起卦（按年月日时计算卦象）
+curl -X POST http://127.0.0.1:8022/divinations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "method": "time",
+    "question": "最近几周会找到工作吗？",
+    "time": "2026-07-02T11:00:00",
+    "generate_markdown": true
+  }'
+
+# 4) random：一键随机生成卦象
+curl -X POST http://127.0.0.1:8022/divinations \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "method": "random",
+    "question": "随便问问",
+    "time": "2026-07-02T11:00:00"
+  }'
+
+# 通用：按 ID 读已生成的 Markdown
+curl http://127.0.0.1:8022/divinations/{id}/markdown
+```
+
+### 铜钱起卦编码（`method=coin`）
+
+每次抛掷 3 枚铜钱，每枚铜钱的朝向编码为：
+
+- `0` = 字（阴）
+- `1` = 花（阳）
+
+按一掷中"花（阳）"的总数 `yang_count ∈ [0, 3]` 决定本爻类型：
+
+| 花数 `yang_count` | 组合 | 爻类型 | 编码 |
+|---|---|---|---|
+| 0 | 三字 | 老阴（动爻） | 4 |
+| 1 | 二字一花 | 少阳 | 2 |
+| 2 | 一字二花 | 少阴 | 1 |
+| 3 | 三花 | 老阳（动爻） | 3 |
+
+共抛掷 6 次，从初爻到上爻依次生成 6 个爻。
+
+## 路线图
+
+- [x] **阶段 0：基础架构** — FastAPI 框架 + 核心目录分层 + 数据模型
+- [x] **阶段 1：起卦 + 排盘** — `core/qigua.py` + `core/paipan.py`（移植自参考项目）
+- [x] **阶段 2：六十四卦数据** — 卦宫 + 卦辞爻辞全部入库
+- [x] **阶段 2.5：本地持久化** — JSON + Markdown 双格式落盘到 `data/`
+- [ ] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
+- [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
+- [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
+- [ ] **阶段 6：会话与历史** — 引入持久化存储与会话管理（当前为文件存储，可平滑迁移到 DB）
 
 ## 合规与免责声明
 
@@ -137,11 +209,11 @@ curl -X POST http://localhost:8000/divinations \
 
 > 本结果仅供文化娱乐参考，不构成任何人生决策依据。
 
-`schema/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明，所有解卦 Agent 的最终输出必须保留。
+`schema/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明；`core/markdown.py` 渲染时也会附加该声明。
 
 ## 开发约定
 
 - **API 层不写业务逻辑**，仅做参数校验和响应组装
 - **core 层无 LLM 依赖**，保证起卦排盘结果可单元测试、可复现
 - **Agent 输出必须结构化**（JSON 或 Markdown），便于聚合与展示
-- 所有 Agent 解读输出必须附带免责声明
+- 所有解卦解读输出必须附带免责声明

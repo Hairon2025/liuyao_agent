@@ -114,11 +114,14 @@ def cast_by_manual(numbers: List[int]) -> List[int]:
 def cast_by_coin() -> List[int]:
     """铜钱起卦：模拟三枚铜钱抛掷六次。
 
-    三枚铜钱（字=阴，花=阳）：
-    - 三字 → 老阴 (4, 动爻)
-    - 二字一花 → 少阳 (2)
-    - 一字二花 → 少阴 (1)
-    - 三花 → 老阳 (3, 动爻)
+    每个铜钱的朝向：
+        0 = 字（阴），1 = 花（阳）
+
+    三枚铜钱组合（按花/阳的数量 yang_count 统计）：
+        yang_count = 0 → 三字       → 老阴 (4, 动爻)
+        yang_count = 1 → 二字一花   → 少阳 (2)
+        yang_count = 2 → 一字二花   → 少阴 (1)
+        yang_count = 3 → 三花       → 老阳 (3, 动爻)
 
     Returns:
         6 个爻的列表（从初爻到上爻）
@@ -126,16 +129,17 @@ def cast_by_coin() -> List[int]:
     lines: list[int] = []
     for _ in range(6):
         # 每个铜钱 0=字(阴), 1=花(阳)
+        # yang_count = 花(阳)的总数 ∈ [0, 3]
         coins = [random.randint(0, 1) for _ in range(3)]
         yang_count = sum(coins)
-        if yang_count == 0:    # 三字
-            lines.append(4)
+        if yang_count == 0:    # 三字（三个阴）
+            lines.append(4)   # → 老阴（动爻）
         elif yang_count == 1:  # 二字一花
-            lines.append(2)
+            lines.append(2)   # → 少阳
         elif yang_count == 2:  # 一字二花
-            lines.append(1)
-        else:                  # 三花
-            lines.append(3)
+            lines.append(1)   # → 少阴
+        else:                  # yang_count == 3，三花（三个阳）
+            lines.append(3)   # → 老阳（动爻）
     return lines
 
 
