@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 虚拟环境
+venv/
+env/
+.venv/
+ENV/
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# 日志
+logs/*.log
+
+# 解卦运行时数据（每个卦一个 JSON + 一个 MD）
+data/divinations_json/*.json
+data/divinations_md/*.md
+
+# 临时文件
+*.tmp
+*.bak
+*.swp
+
+
+六爻模版.md
+六爻算卦助手的商业idea.md
