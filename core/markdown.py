@@ -54,8 +54,8 @@ def _format_line_table_row(line: LineInfo) -> str:
     return (
         f"| {line.line_type} | {line.liushen} | {line.liuqin or '—'} | "
         f"{line.symbol}{line.moving_mark.strip()} | "
-        f"{line.dizhi}({line.wuxing}) | {changing} | {shiying} | "
-        f"{line.score:+.1f} | {status} |"
+        f"{line.tiangan} | {line.dizhi}({line.wuxing}) | "
+        f"{changing} | {shiying} | {line.score:+.1f} | {status} |"
     )
 
 
@@ -71,10 +71,10 @@ def _format_hexagram_section(gua: HexagramInfo) -> list[str]:
         f"**应爻**：{gua.ying_yao_position}爻（{gua.ying_yao_dizhi}）"
     )
     lines.append("")
-    lines.append("| 爻型 | 六神 | 六亲 | 卦象 | 地支(五行) | 动爻 | 世应 | 旺衰得分 | 状态 |")
-    lines.append("|---|---|---|---|---|---|---|---|---|")
-    # 从初爻到上爻输出
-    sorted_lines = sorted(gua.lines, key=lambda x: x.position)
+    lines.append("| 爻型 | 六神 | 六亲 | 卦象 | 天干 | 地支(五行) | 动爻 | 世应 | 旺衰得分 | 状态 |")
+    lines.append("|---|---|---|---|---|---|---|---|---|---|")
+    # 从上爻到初爻输出（传统六爻表阅读顺序）
+    sorted_lines = sorted(gua.lines, key=lambda x: x.position, reverse=True)
     for line in sorted_lines:
         lines.append(_format_line_table_row(line))
     lines.append("")

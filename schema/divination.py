@@ -38,6 +38,7 @@ class LineInfo(BaseModel):
     line_type: str = Field(..., description="爻类型（少阴/少阳/纯阴/纯阳）")
     symbol: str = Field(..., description="卦象符号（-- -- / -----）")
     moving_mark: str = Field(..., description="动爻标记")
+    tiangan: str = Field(..., description="天干（纳甲）")
     dizhi: str = Field(..., description="地支")
     wuxing: str = Field(..., description="五行")
     shiying: str = Field(..., description="世爻/应爻/---")

@@ -31,6 +31,7 @@ class LineResult(TypedDict):
     line_type: str               # 少阴/少阳/纯阴/纯阳
     symbol: str                  # -- -- / -----
     moving_mark: str             # "  →" 或 "   "
+    tiangan: str                 # 天干（纳甲）
     dizhi: str                   # 地支
     wuxing: str                  # 五行
     shiying: str                 # 世爻/应爻/---
@@ -67,6 +68,7 @@ class PaipanResult(TypedDict):
 def _build_line_result(
     line_value: int,
     idx: int,
+    tiangan: str,
     dizhi: str,
     wuxing: str,
     shi_yao_idx: int,
@@ -90,6 +92,7 @@ def _build_line_result(
         "line_type": hex_mod.LINE_NAMES[line_value],
         "symbol": hex_mod.LINE_SYMBOLS[line_value],
         "moving_mark": hex_mod.MOVING_MARK[line_value],
+        "tiangan": tiangan,
         "dizhi": dizhi,
         "wuxing": wuxing,
         "shiying": shiying,
@@ -101,6 +104,7 @@ def _build_line_result(
 
 def _build_hexagram_result(
     lines: list[int],
+    stems: list[str],
     branches: list[str],
     liushou_order: list[str],
     wo_wuxing: str | None,
@@ -115,6 +119,7 @@ def _build_hexagram_result(
     """组装单卦（本卦或变卦）结果。"""
     line_results: list[LineResult] = []
     for i in range(6):
+        tiangan = stems[i]
         dizhi = branches[i]
         wuxing = hex_mod.BRANCH_WUXING[dizhi]
         liqin_str = liuqin.get_liqin(wo_wuxing, wuxing) if wo_wuxing else ""
@@ -122,6 +127,7 @@ def _build_hexagram_result(
             _build_line_result(
                 line_value=lines[i],
                 idx=i,
+                tiangan=tiangan,
                 dizhi=dizhi,
                 wuxing=wuxing,
                 shi_yao_idx=shi_yao_idx,
@@ -180,7 +186,9 @@ def arrange_hexagram(
     ben_name = ben_info["卦名"]
     ben_shi_idx = ben_info["世爻索引"]
     ben_ying_idx = ben_info["应爻索引"]
-    ben_branches = hex_mod.HEXAGRAM_EARTHLY_BRANCH[ben_palace]
+    ben_inner, ben_outer = hex_mod.get_hexagram_trigrams(original_hexagram)
+    ben_branches = hex_mod.TRIGRAM_BRANCHES_INNER[ben_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[ben_outer]
+    ben_stems = hex_mod.TRIGRAM_STEMS_INNER[ben_inner] + hex_mod.TRIGRAM_STEMS_OUTER[ben_outer]
     ben_shi_branch = ben_branches[ben_shi_idx]
     ben_shi_wuxing = hex_mod.BRANCH_WUXING[ben_shi_branch]
 
@@ -190,11 +198,16 @@ def arrange_hexagram(
 
     bian_lines: list[int] | None = None
     bian_branches: list[str] | None = None
+    bian_stems: list[str] | None = None
     bian_info = None
     if has_moving:
         bian_lines = bianhua.generate_changed_hexagram(original_hexagram)
         bian_info = hex_mod.get_hexagram_palace(bian_lines)
-        bian_branches = hex_mod.HEXAGRAM_EARTHLY_BRANCH[bian_info["宫名"]]
+        bian_inner, bian_outer = hex_mod.get_hexagram_trigrams(bian_lines)
+        bian_branches = hex_mod.TRIGRAM_BRANCHES_INNER[bian_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[bian_outer]
+        bian_stems = hex_mod.TRIGRAM_STEMS_INNER[bian_inner] + hex_mod.TRIGRAM_STEMS_OUTER[bian_outer]
+
+
 
     # 5. 标记动爻
     is_moving = [line in (3, 4) for line in original_hexagram]
@@ -257,6 +270,7 @@ def arrange_hexagram(
     # 10. 组装结果
     ben_gua = _build_hexagram_result(
         lines=original_hexagram,
+        stems=ben_stems,
         branches=ben_branches,
         liushou_order=liushou_order,
         wo_wuxing=ben_shi_wuxing,
@@ -273,6 +287,7 @@ def arrange_hexagram(
     if has_moving and bian_lines and bian_branches and bian_info and bian_strengths:
         bian_gua = _build_hexagram_result(
             lines=bian_lines,
+            stems=bian_stems,
             branches=bian_branches,
             liushou_order=liushou_order,
             wo_wuxing=bian_shi_wuxing,
