@@ -189,8 +189,8 @@ def arrange_hexagram(
     ben_inner, ben_outer = hex_mod.get_hexagram_trigrams(original_hexagram)
     ben_branches = hex_mod.TRIGRAM_BRANCHES_INNER[ben_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[ben_outer]
     ben_stems = hex_mod.TRIGRAM_STEMS_INNER[ben_inner] + hex_mod.TRIGRAM_STEMS_OUTER[ben_outer]
-    ben_shi_branch = ben_branches[ben_shi_idx]
-    ben_shi_wuxing = hex_mod.BRANCH_WUXING[ben_shi_branch]
+    # "我"按卦宫五行取（卦宫固定则六亲映射稳定，本卦/变卦统一规则）
+    ben_shi_wuxing = hex_mod.PALACE_WUXING[ben_palace]
 
     # 4. 变卦
     moving_positions = bianhua.get_moving_positions(original_hexagram)
@@ -258,14 +258,8 @@ def arrange_hexagram(
     ben_texts = get_hexagram_texts(ben_name)
     bian_texts = get_hexagram_texts(bian_info["卦名"]) if bian_info else {"卦辞": "", "爻辞": []}
 
-    # 9. 变卦的世爻五行（用于六亲计算）
-    bian_shi_wuxing = None
-    bian_shi_idx = None
-    if bian_info:
-        bian_shi_idx = bian_info["世爻索引"]
-        if bian_shi_idx is not None and bian_branches:
-            bian_shi_branch = bian_branches[bian_shi_idx]
-            bian_shi_wuxing = hex_mod.BRANCH_WUXING[bian_shi_branch]
+    # 9. 变卦沿用本卦的"我"（卦宫五行），不再单独取变卦卦宫
+    bian_shi_idx = bian_info["世爻索引"] if bian_info else None
 
     # 10. 组装结果
     ben_gua = _build_hexagram_result(
@@ -290,7 +284,7 @@ def arrange_hexagram(
             stems=bian_stems,
             branches=bian_branches,
             liushou_order=liushou_order,
-            wo_wuxing=bian_shi_wuxing,
+            wo_wuxing=ben_shi_wuxing,  # 变卦沿用本卦的"我"（卦宫五行）
             strengths=bian_strengths,
             palace=bian_info["宫名"],
             gua_type=bian_info["卦类型"],
