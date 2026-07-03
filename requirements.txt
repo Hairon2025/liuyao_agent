@@ -4,3 +4,7 @@ pydantic
 pydantic-settings
 lunar-python
 python-dotenv
+
+# 测试
+pytest>=7.0
+httpx>=0.24  # TestClient (FastAPI) 推荐版本

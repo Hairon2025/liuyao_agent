@@ -19,7 +19,8 @@ from datetime import datetime
 from typing import TypedDict
 
 from core import bianhua, calendar, hexagrams as hex_mod, liuqin, liushen, wangshuai
-from core.constants import BRANCH_WUXING, PALACE_WUXING
+from core.constants import BRANCH_WUXING
+from core.hexagrams import HexagramFull
 from core.wangshuai import YaoStrength
 from core.xunkong import get_xunkong
 
@@ -179,18 +180,17 @@ def arrange_hexagram(
     # 2. 六兽顺序
     liushou_order = liushen.get_liushou_order(day_branch)
 
-    # 3. 本卦信息
-    ben_info = hex_mod.get_hexagram_palace(original_hexagram)
+    # 3. 本卦信息（一次拿到 meta + 纳甲 + 我）
+    ben: HexagramFull = hex_mod.parse_hexagram(original_hexagram)
+    ben_info = ben.meta
     ben_palace = ben_info["宫名"]
     ben_gua_type = ben_info["卦类型"]
     ben_name = ben_info["卦名"]
     ben_shi_idx = ben_info["世爻索引"]
     ben_ying_idx = ben_info["应爻索引"]
-    ben_inner, ben_outer = hex_mod.get_hexagram_trigrams(original_hexagram)
-    ben_branches = hex_mod.TRIGRAM_BRANCHES_INNER[ben_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[ben_outer]
-    ben_stems = hex_mod.TRIGRAM_STEMS_INNER[ben_inner] + hex_mod.TRIGRAM_STEMS_OUTER[ben_outer]
-    # "我"按卦宫五行取（卦宫固定则六亲映射稳定，本卦/变卦统一规则）
-    ben_shi_wuxing = PALACE_WUXING[ben_palace]
+    ben_branches = ben.branches
+    ben_stems = ben.stems
+    ben_shi_wuxing = ben.palace_wuxing  # "我"按卦宫五行取（卦宫固定则六亲映射稳定）
 
     # 4. 变卦
     moving_positions = bianhua.get_moving_positions(original_hexagram)
@@ -199,13 +199,12 @@ def arrange_hexagram(
     bian_lines: list[int] | None = None
     bian_branches: list[str] | None = None
     bian_stems: list[str] | None = None
-    bian_info = None
+    bian: HexagramFull | None = None
     if has_moving:
         bian_lines = bianhua.generate_changed_hexagram(original_hexagram)
-        bian_info = hex_mod.get_hexagram_palace(bian_lines)
-        bian_inner, bian_outer = hex_mod.get_hexagram_trigrams(bian_lines)
-        bian_branches = hex_mod.TRIGRAM_BRANCHES_INNER[bian_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[bian_outer]
-        bian_stems = hex_mod.TRIGRAM_STEMS_INNER[bian_inner] + hex_mod.TRIGRAM_STEMS_OUTER[bian_outer]
+        bian = hex_mod.parse_hexagram(bian_lines)
+        bian_branches = bian.branches
+        bian_stems = bian.stems
 
 
 
@@ -256,10 +255,10 @@ def arrange_hexagram(
     from running_data.hexagram_texts import get_hexagram_texts
 
     ben_texts = get_hexagram_texts(ben_name)
-    bian_texts = get_hexagram_texts(bian_info["卦名"]) if bian_info else {"卦辞": "", "爻辞": []}
+    bian_texts = get_hexagram_texts(bian.meta["卦名"]) if bian else {"卦辞": "", "爻辞": []}
 
     # 9. 变卦沿用本卦的"我"（卦宫五行），不再单独取变卦卦宫
-    bian_shi_idx = bian_info["世爻索引"] if bian_info else None
+    bian_shi_idx = bian.meta["世爻索引"] if bian else None
 
     # 10. 组装结果
     ben_gua = _build_hexagram_result(
@@ -278,7 +277,7 @@ def arrange_hexagram(
     )
 
     bian_gua: HexagramResult | None = None
-    if has_moving and bian_lines and bian_branches and bian_info and bian_strengths:
+    if has_moving and bian and bian_lines and bian_branches and bian_strengths:
         bian_gua = _build_hexagram_result(
             lines=bian_lines,
             stems=bian_stems,
@@ -286,11 +285,11 @@ def arrange_hexagram(
             liushou_order=liushou_order,
             wo_wuxing=ben_shi_wuxing,  # 变卦沿用本卦的"我"（卦宫五行）
             strengths=bian_strengths,
-            palace=bian_info["宫名"],
-            gua_type=bian_info["卦类型"],
-            name=bian_info["卦名"],
-            shi_yao_idx=bian_shi_idx if bian_shi_idx is not None else 0,
-            ying_yao_idx=(bian_shi_idx + 3) % 6 if bian_shi_idx is not None else 3,
+            palace=bian.meta["宫名"],
+            gua_type=bian.meta["卦类型"],
+            name=bian.meta["卦名"],
+            shi_yao_idx=bian.meta["世爻索引"],
+            ying_yao_idx=bian.meta["应爻索引"],
             texts=bian_texts,
         )
 

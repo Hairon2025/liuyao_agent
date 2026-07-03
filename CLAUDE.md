@@ -19,7 +19,12 @@ liuyao_agent/
 │
 ├── core/                     # 核心业务（无 LLM 的纯算法层）
 │   ├── calendar.py           #   地支计算（年月日时 → 地支）
-│   ├── hexagrams.py          #   64 卦卦宫数据 + 编码转换
+│   ├── constants.py          #   共享常量（天干地支序、五行、八宫五行、旬空等）
+│   ├── hexagrams/            #   64 卦包（数据/编码/显示/公共 API）
+│   │   ├── data.py           #     _HEXAGRAM_DATA + 纳甲 4 张表
+│   │   ├── codec.py          #     编码/卦宫/卦位查询
+│   │   ├── display.py        #     LINE_NAMES / LINE_SYMBOLS / MOVING_MARK
+│   │   └── __init__.py       #     公共 API: parse_hexagram() → HexagramFull
 │   ├── wangshuai.py          #   爻旺衰判断
 │   ├── xunkong.py            #   旬空计算
 │   ├── liushen.py            #   六兽（青龙/朱雀/...）
@@ -73,7 +78,8 @@ liuyao_agent/
 | 模块 | 职责 |
 |---|---|
 | `core/calendar` | 公历日期 → 地支（年月日时） |
-| `core/hexagrams` | 64 卦卦宫、世应、卦名查询（编码 1-4 → 卦宫信息） |
+| `core/constants` | 共享常量（天干地支序、五行、八宫五行、旬空等） |
+| `core/hexagrams` | 64 卦包：上层用 `parse_hexagram(lines) → HexagramFull` 一次性拿到 `meta + 纳甲 + 卦宫五行`；底层 `get_hexagram_palace` / `get_hexagram_trigrams` / `encode_hexagram` 按需使用 |
 | `core/wangshuai` | 单爻旺衰得分 + 状态（入墓/暗动/化绝等）+ 批量计算 + 入墓扩展 + 回头生克 |
 | `core/xunkong` | 日干支 → 旬空 |
 | `core/liushen` | 日地支 → 六兽顺序 |
