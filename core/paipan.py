@@ -1,20 +1,20 @@
 """六爻排盘主函数（移植自参考项目 main.py:arrange_hexagram）
 
-完整流程：
-1. 计算时间地支 + 旬空
-2. 计算六兽顺序
-3. 识别本卦（卦宫、世应、卦名）
-4. 生成变卦
-5. 计算本卦/变卦每爻旺衰得分与状态
-6. 返回结构化排盘结果
+完整流程（每个阶段对应一个 stage helper）：
+1. 时间干支 + 旬空 + 六兽顺序   → _compute_context
+2. 本卦 / 变卦解析              → _parse_ben_bian
+3. 本卦 / 变卦旺衰得分 + 状态   → _calculate_strengths
+4. 组装结构化排盘结果           → _build_single_hexagram_result (x2)
 
 设计目标：
 - 纯函数：无 IO、无全局状态
 - 返回 dict 而非字符串，方便 API 层组装响应
 - 可单测、可缓存
+- arrange_hexagram() 只做编排：阶段计算下沉到命名 helper
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TypedDict
 
@@ -23,6 +23,12 @@ from core.constants import BRANCH_WUXING
 from core.hexagrams import HexagramFull
 from core.wangshuai import YaoStrength
 from core.xunkong import get_xunkong
+from running_data.hexagram_texts import get_hexagram_texts
+
+
+# ============================================================
+# Public TypedDicts (排盘对外输出结构)
+# ============================================================
 
 
 class LineResult(TypedDict):
@@ -67,6 +73,133 @@ class PaipanResult(TypedDict):
     moving_positions: list[int]  # 动爻位置 1-6
 
 
+# ============================================================
+# Intermediate dataclasses (排盘内部中间态)
+# ============================================================
+
+
+@dataclass(frozen=True)
+class PaipanContext:
+    """阶段 1-2：时间相关上下文。"""
+    ganzhi: dict[str, str]       # {year, month, day, hour} → "丙午" 等
+    month_branch: str            # 月支（旺衰计算用）
+    day_branch: str              # 日支（旺衰计算用）
+    xunkong: list[str]           # 旬空地支
+    liushou_order: list[str]     # 六兽顺序（6 个）
+
+
+@dataclass(frozen=True)
+class PaipanStrengths:
+    """阶段 5：旺衰计算结果。无变卦时 bian 为 None。"""
+    ben: list[YaoStrength]
+    bian: list[YaoStrength] | None
+
+
+# ============================================================
+# Stage helpers
+# ============================================================
+
+
+def _compute_context(qigua_time: datetime) -> PaipanContext:
+    """阶段 1-2：时间干支 + 旬空 + 六兽顺序。"""
+    ganzhi = calendar.get_ganzhi(qigua_time)
+    day_ganzhi = ganzhi["day"]
+    return PaipanContext(
+        ganzhi=ganzhi,
+        month_branch=ganzhi["month"][1],
+        day_branch=ganzhi["day"][1],
+        xunkong=get_xunkong(day_ganzhi),
+        liushou_order=liushen.get_liushou_order(ganzhi["day"][1]),
+    )
+
+
+def _parse_ben_bian(
+    lines: list[int],
+) -> tuple[HexagramFull, HexagramFull | None, list[int] | None]:
+    """阶段 3-4：本卦 + 变卦解析。
+
+    Returns:
+        (ben, bian, bian_lines)
+        - 无动爻时 bian=None, bian_lines=None
+        - bian_lines 是变卦的 1-4 编码（旺衰计算 + is_changing 判定需要）
+    """
+    ben = hex_mod.parse_hexagram(lines)
+    if not bianhua.has_moving_yao(lines):
+        return ben, None, None
+    bian_lines = bianhua.generate_changed_hexagram(lines)
+    return ben, hex_mod.parse_hexagram(bian_lines), bian_lines
+
+
+def _calculate_strengths(
+    lines: list[int],
+    ben: HexagramFull,
+    bian: HexagramFull | None,
+    ctx: PaipanContext,
+) -> PaipanStrengths:
+    """阶段 5：本卦 + 变卦旺衰计算。"""
+    moving_indices = bianhua.get_moving_indices(lines)
+    ben_strengths = _calculate_single_hex_strengths(
+        branches=ben.branches,
+        is_original=True,
+        lines=lines,
+        original_branches=ben.branches,
+        changed_branches=bian.branches if bian else None,
+        moving_indices=moving_indices,
+        ctx=ctx,
+    )
+    bian_strengths: list[YaoStrength] | None = None
+    if bian:
+        bian_strengths = _calculate_single_hex_strengths(
+            branches=bian.branches,
+            is_original=False,
+            lines=lines,
+            original_branches=ben.branches,
+            changed_branches=bian.branches,
+            moving_indices=moving_indices,
+            ctx=ctx,
+        )
+    return PaipanStrengths(ben=ben_strengths, bian=bian_strengths)
+
+
+def _calculate_single_hex_strengths(
+    branches: list[str],
+    *,
+    is_original: bool,
+    lines: list[int],
+    original_branches: list[str],
+    changed_branches: list[str] | None,
+    moving_indices: list[int],
+    ctx: PaipanContext,
+) -> list[YaoStrength]:
+    """阶段 5 共享：单卦旺衰计算（本卦或变卦通用）。
+
+    is_original=True 时计算本卦（参考变卦做回头相关判定）；
+    is_original=False 时计算变卦（对本位动爻做回头生克）。
+    """
+    strengths = wangshuai.batch_calculate_strength(
+        yao_branches=branches,
+        month_branch=ctx.month_branch,
+        day_branch=ctx.day_branch,
+        changed_branches=changed_branches if is_original else None,
+        is_moving_yaos=[line in (3, 4) for line in lines] if is_original else None,
+    )
+    strengths = wangshuai.check_additional_tomb(
+        original_hexagram=lines,
+        original_branch=original_branches,
+        changed_branch=changed_branches,
+        strengths=strengths,
+        is_original=is_original,
+    )
+    if not is_original:
+        strengths = wangshuai.check_huitou(
+            original_branch=original_branches,
+            changed_branch=changed_branches,
+            moving_indices=moving_indices,
+            changed_strength=strengths,
+        )
+    return strengths
+
+
 def _build_line_result(
     line_value: int,
     idx: int,
@@ -104,32 +237,39 @@ def _build_line_result(
     }
 
 
-def _build_hexagram_result(
+def _build_single_hexagram_result(
     lines: list[int],
-    stems: list[str],
-    branches: list[str],
-    liushou_order: list[str],
-    wo_wuxing: str | None,
+    hex_full: HexagramFull,
     strengths: list[YaoStrength],
-    palace: str,
-    gua_type: str,
-    name: str,
-    shi_yao_idx: int,
-    ying_yao_idx: int,
-    texts: dict,
+    liushou_order: list[str],
+    *,
+    wo_wuxing: str,
 ) -> HexagramResult:
-    """组装单卦（本卦或变卦）结果。"""
+    """阶段 6：组装单卦（本卦或变卦）的对外结构。
+
+    Args:
+        lines: 1-4 编码（用于查 LINE_NAMES/SYMBOLS/MOVING_MARK + is_changing）
+        hex_full: 已解析的卦象（meta + 纳甲 + 卦宫五行）
+        strengths: 已计算的旺衰列表（6 个爻）
+        liushou_order: 六兽顺序（来自 ctx）
+        wo_wuxing: "我"的五行，用于六亲映射。
+            本卦 = hex_full.palace_wuxing；
+            变卦 = 沿用本卦（由调用方显式传入）。
+    """
+    texts = get_hexagram_texts(hex_full.meta["卦名"])
+    shi_yao_idx = hex_full.meta["世爻索引"]
+    ying_yao_idx = hex_full.meta["应爻索引"]
+
     line_results: list[LineResult] = []
     for i in range(6):
-        tiangan = stems[i]
-        dizhi = branches[i]
+        dizhi = hex_full.branches[i]
         wuxing = BRANCH_WUXING[dizhi]
         liqin_str = liuqin.get_liqin(wo_wuxing, wuxing) if wo_wuxing else ""
         line_results.append(
             _build_line_result(
                 line_value=lines[i],
                 idx=i,
-                tiangan=tiangan,
+                tiangan=hex_full.stems[i],
                 dizhi=dizhi,
                 wuxing=wuxing,
                 shi_yao_idx=shi_yao_idx,
@@ -141,17 +281,22 @@ def _build_hexagram_result(
         )
 
     return {
-        "palace": palace,
-        "gua_type": gua_type,
-        "name": name,
+        "palace": hex_full.meta["宫名"],
+        "gua_type": hex_full.meta["卦类型"],
+        "name": hex_full.meta["卦名"],
         "guaci": texts.get("卦辞", ""),
         "yaoci": list(texts.get("爻辞", [])),
         "shi_yao_position": shi_yao_idx + 1,
         "ying_yao_position": ying_yao_idx + 1,
-        "shi_yao_dizhi": branches[shi_yao_idx],
-        "ying_yao_dizhi": branches[ying_yao_idx],
+        "shi_yao_dizhi": hex_full.branches[shi_yao_idx],
+        "ying_yao_dizhi": hex_full.branches[ying_yao_idx],
         "lines": line_results,
     }
+
+
+# ============================================================
+# Main: arrange_hexagram (编排 5 个 stage)
+# ============================================================
 
 
 def arrange_hexagram(
@@ -170,135 +315,39 @@ def arrange_hexagram(
     Returns:
         结构化排盘结果 dict
     """
-    # 1. 时间干支（lunar_python 精确节气计算） + 旬空
-    ganzhi = calendar.get_ganzhi(qigua_time)
-    day_ganzhi = ganzhi["day"]                       # e.g., "丁丑"
-    month_branch = ganzhi["month"][1]                # 提取地支
-    day_branch = ganzhi["day"][1]                    # 提取地支
-    xunkong = get_xunkong(day_ganzhi)
+    # 阶段 1-2: 时间上下文
+    ctx = _compute_context(qigua_time)
 
-    # 2. 六兽顺序
-    liushou_order = liushen.get_liushou_order(day_branch)
+    # 阶段 3-4: 本卦 + 变卦解析
+    ben, bian, bian_lines = _parse_ben_bian(original_hexagram)
 
-    # 3. 本卦信息（一次拿到 meta + 纳甲 + 我）
-    ben: HexagramFull = hex_mod.parse_hexagram(original_hexagram)
-    ben_info = ben.meta
-    ben_palace = ben_info["宫名"]
-    ben_gua_type = ben_info["卦类型"]
-    ben_name = ben_info["卦名"]
-    ben_shi_idx = ben_info["世爻索引"]
-    ben_ying_idx = ben_info["应爻索引"]
-    ben_branches = ben.branches
-    ben_stems = ben.stems
-    ben_shi_wuxing = ben.palace_wuxing  # "我"按卦宫五行取（卦宫固定则六亲映射稳定）
+    # 阶段 5: 旺衰（本卦 + 变卦）
+    strengths = _calculate_strengths(original_hexagram, ben, bian, ctx)
 
-    # 4. 变卦
-    moving_positions = bianhua.get_moving_positions(original_hexagram)
-    has_moving = len(moving_positions) > 0
-
-    bian_lines: list[int] | None = None
-    bian_branches: list[str] | None = None
-    bian_stems: list[str] | None = None
-    bian: HexagramFull | None = None
-    if has_moving:
-        bian_lines = bianhua.generate_changed_hexagram(original_hexagram)
-        bian = hex_mod.parse_hexagram(bian_lines)
-        bian_branches = bian.branches
-        bian_stems = bian.stems
-
-
-
-    # 5. 标记动爻
-    is_moving = [line in (3, 4) for line in original_hexagram]
-    moving_indices = bianhua.get_moving_indices(original_hexagram)
-
-    # 6. 计算本卦旺衰
-    ben_strengths = wangshuai.batch_calculate_strength(
-        yao_branches=ben_branches,
-        month_branch=month_branch,
-        day_branch=day_branch,
-        changed_branches=bian_branches,
-        is_moving_yaos=is_moving,
-    )
-    ben_strengths = wangshuai.check_additional_tomb(
-        original_hexagram=original_hexagram,
-        original_branch=ben_branches,
-        changed_branch=bian_branches,
-        strengths=ben_strengths,
-        is_original=True,
-    )
-
-    # 7. 计算变卦旺衰
-    bian_strengths: list[YaoStrength] | None = None
-    if has_moving and bian_lines and bian_branches:
-        bian_strengths = wangshuai.batch_calculate_strength(
-            yao_branches=bian_branches,
-            month_branch=month_branch,
-            day_branch=day_branch,
-            changed_branches=None,
-        )
-        bian_strengths = wangshuai.check_additional_tomb(
-            original_hexagram=original_hexagram,
-            original_branch=ben_branches,
-            changed_branch=bian_branches,
-            strengths=bian_strengths,
-            is_original=False,
-        )
-        bian_strengths = wangshuai.check_huitou(
-            original_branch=ben_branches,
-            changed_branch=bian_branches,
-            moving_indices=moving_indices,
-            changed_strength=bian_strengths,
-        )
-
-    # 8. 加载卦辞爻辞
-    from running_data.hexagram_texts import get_hexagram_texts
-
-    ben_texts = get_hexagram_texts(ben_name)
-    bian_texts = get_hexagram_texts(bian.meta["卦名"]) if bian else {"卦辞": "", "爻辞": []}
-
-    # 9. 变卦沿用本卦的"我"（卦宫五行），不再单独取变卦卦宫
-    bian_shi_idx = bian.meta["世爻索引"] if bian else None
-
-    # 10. 组装结果
-    ben_gua = _build_hexagram_result(
+    # 阶段 6: 组装结果
+    ben_gua = _build_single_hexagram_result(
         lines=original_hexagram,
-        stems=ben_stems,
-        branches=ben_branches,
-        liushou_order=liushou_order,
-        wo_wuxing=ben_shi_wuxing,
-        strengths=ben_strengths,
-        palace=ben_palace,
-        gua_type=ben_gua_type,
-        name=ben_name,
-        shi_yao_idx=ben_shi_idx,
-        ying_yao_idx=ben_ying_idx,
-        texts=ben_texts,
+        hex_full=ben,
+        strengths=strengths.ben,
+        liushou_order=ctx.liushou_order,
+        wo_wuxing=ben.palace_wuxing,
     )
-
     bian_gua: HexagramResult | None = None
-    if has_moving and bian and bian_lines and bian_branches and bian_strengths:
-        bian_gua = _build_hexagram_result(
+    if bian and bian_lines and strengths.bian:
+        bian_gua = _build_single_hexagram_result(
             lines=bian_lines,
-            stems=bian_stems,
-            branches=bian_branches,
-            liushou_order=liushou_order,
-            wo_wuxing=ben_shi_wuxing,  # 变卦沿用本卦的"我"（卦宫五行）
-            strengths=bian_strengths,
-            palace=bian.meta["宫名"],
-            gua_type=bian.meta["卦类型"],
-            name=bian.meta["卦名"],
-            shi_yao_idx=bian.meta["世爻索引"],
-            ying_yao_idx=bian.meta["应爻索引"],
-            texts=bian_texts,
+            hex_full=bian,
+            strengths=strengths.bian,
+            liushou_order=ctx.liushou_order,
+            wo_wuxing=ben.palace_wuxing,  # 变卦沿用本卦的"我"（卦宫五行）
         )
 
     return {
         "question": question,
         "qigua_time": qigua_time.isoformat(),
-        "ganzhi": ganzhi,
-        "xunkong": xunkong,
+        "ganzhi": ctx.ganzhi,
+        "xunkong": ctx.xunkong,
         "ben_gua": ben_gua,
         "bian_gua": bian_gua,
-        "moving_positions": moving_positions,
+        "moving_positions": bianhua.get_moving_positions(original_hexagram),
     }

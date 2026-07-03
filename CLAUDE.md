@@ -88,6 +88,22 @@ liuyao_agent/
 | `core/qigua` | 4 种起卦方式：manual / time / coin / random |
 | `core/paipan` | 编排所有上述模块，输出结构化排盘结果 |
 
+### `core/paipan.py` 内部结构（Step 5 重构后）
+
+`arrange_hexagram()` 只做编排，下沉到 5 个 stage helper + 2 个 frozen dataclass 中间态：
+
+| 阶段 | helper | 输入 | 输出 |
+|---|---|---|---|
+| 1-2 | `_compute_context` | `qigua_time` | `PaipanContext`（干支 / 月支 / 日支 / 旬空 / 六兽序） |
+| 3-4 | `_parse_ben_bian` | `lines` | `(HexagramFull, HexagramFull \| None, bian_lines \| None)` |
+| 5 | `_calculate_strengths` | lines, ben, bian, ctx | `PaipanStrengths`（ben + bian 各自的旺衰列表） |
+| 5 共享 | `_calculate_single_hex_strengths` | is_original 切换 | 本卦 / 变卦 旺衰通用计算（回头生克等仅对变卦做） |
+| 6 | `_build_single_hexagram_result` | lines, hex_full, strengths, ... | `HexagramResult`（本卦或变卦的对外结构） |
+
+中间态：`PaipanContext`（frozen dataclass）、`PaipanStrengths`（frozen dataclass）。
+对外 TypedDict 仍为 `LineResult` / `HexagramResult` / `PaipanResult`（保持 API 兼容）。
+变卦六亲沿用本卦的 `palace_wuxing`（调用方显式传入 `wo_wuxing=ben.palace_wuxing`）。
+
 ## 常用命令
 
 ```bash
