@@ -29,15 +29,17 @@ liuyao_agent/
 │   └── qigua.py              #   起卦算法（手动/时间/铜钱/随机）
 │
 ├── schema/                   # Pydantic 数据模型
-│   └── divination.py         #   QiguaRequest / PaipanResult / DivinationResponse
+│   └── api/                  #   API 请求/响应模型
+│       └── divination.py     #   QiguaRequest / PaipanResult / DivinationResponse
 │
 ├── utils/                    # 通用工具
 │   ├── bazi.py               #   公历转八字（lunar_python）
 │   ├── logger.py             #   结构化日志
-│   └── llm_client.py         #   LLM 客户端抽象接口
+│   ├── llm_client.py         #   LLM 客户端抽象接口
+│   └── markdown.py           #   排盘结果 → 格式化 Markdown 字符串
 │
 ├── config/                   # 全局配置（pydantic-settings）
-├── data/                     # 静态数据 + 解卦记录
+├── running_data/             # 运行时数据：静态数据 + 解卦记录
 │   ├── hexagram_texts.py     #   64 卦卦辞 + 爻辞
 │   ├── divination_store.py   #   解卦结果 JSON / Markdown 存储
 │   ├── divinations_json/     #   每个解卦一个 JSON 文件（运行时生成）
@@ -59,10 +61,10 @@ liuyao_agent/
 | `core/` | 起卦、排盘等确定性纯算法 | 否 |
 | `schema/` | 数据模型 | 否 |
 | `utils/` | 外部依赖/纯函数工具 | 视工具而定 |
-| `data/` | 静态数据（卦辞爻辞等）+ 解卦记录 JSON 存储 | 否 |
+| `running_data/` | 静态数据（卦辞爻辞等）+ 解卦记录 JSON 存储 | 否 |
 | `agent/` (待用户设计) | 多 Agent 协作解卦 | 是 |
 
-**调用方向**：`api → core / agent → schema / utils / data`，无反向依赖。
+**调用方向**：`api → core / agent → schema / utils / running_data`，无反向依赖。
 
 ## 核心算法层（core/）模块说明
 
@@ -79,7 +81,6 @@ liuyao_agent/
 | `core/bianhua` | 动爻识别 + 变卦生成 |
 | `core/qigua` | 4 种起卦方式：manual / time / coin / random |
 | `core/paipan` | 编排所有上述模块，输出结构化排盘结果 |
-| `core/markdown` | 排盘结果 → 格式化 Markdown 字符串 |
 
 ## 常用命令
 

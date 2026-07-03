@@ -12,32 +12,20 @@ def generate_changed_hexagram(original: List[int]) -> List[int]:
     - 纯阴(4) → 少阳(2)
     - 静爻保持不变
 
+    调用方应先用 `has_moving_yao(original)` 守卫；无动爻时本函数返回原卦拷贝。
+
     Args:
         original: 本卦编码列表（6 个 1-4）
 
     Returns:
         变卦编码列表
     """
-    changed = []
-    for line in original:
-        if line == 3:
-            changed.append(1)
-        elif line == 4:
-            changed.append(2)
-        else:
-            changed.append(line)
-
-    # 兜底：若变卦与本卦完全相同（无动爻情况下已被前面逻辑过滤）
-    if changed == original:
-        for i, line in enumerate(original):
-            if line == 3:
-                changed[i] = 2
-                break
-            if line == 4:
-                changed[i] = 1
-                break
-
-    return changed
+    return [
+        1 if line == 3 else
+        2 if line == 4 else
+        line
+        for line in original
+    ]
 
 
 def has_moving_yao(lines: List[int]) -> bool:

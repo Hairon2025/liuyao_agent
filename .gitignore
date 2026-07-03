@@ -32,8 +32,8 @@ ENV/
 logs/*.log
 
 # 解卦运行时数据（每个卦一个 JSON + 一个 MD）
-data/divinations_json/*.json
-data/divinations_md/*.md
+running_data/divinations_json/*.json
+running_data/divinations_md/*.md
 
 # 临时文件
 *.tmp

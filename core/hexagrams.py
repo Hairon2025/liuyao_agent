@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import TypedDict
 
+from core.constants import BRANCH_WUXING, PALACE_WUXING, POSITION_NAMES
+
 
 class HexagramMeta(TypedDict):
     宫名: str       # 所属八宫
@@ -154,28 +156,9 @@ TRIGRAM_BRANCHES_OUTER: dict[int, list[str]] = {
     8: ["丑", "亥", "酉"],
 }
 
-# 地支与五行对应
-BRANCH_WUXING: dict[str, str] = {
-    "子": "水", "丑": "土", "寅": "木", "卯": "木",
-    "辰": "土", "巳": "火", "午": "火", "未": "土",
-    "申": "金", "酉": "金", "戌": "土", "亥": "水",
-}
-
-# 卦宫与五行对应（"我"的五行，按卦宫取，卦宫固定则六亲映射稳定）
-# 乾兑属金 / 坤艮属土 / 震巽属木 / 坎水 / 离火
-PALACE_WUXING: dict[str, str] = {
-    "乾宫": "金",
-    "兑宫": "金",
-    "坤宫": "土",
-    "艮宫": "土",
-    "震宫": "木",
-    "巽宫": "木",
-    "坎宫": "水",
-    "离宫": "火",
-}
-
-# 爻位显示名称
-POSITION_NAMES: list[str] = ["初爻", "二爻", "三爻", "四爻", "五爻", "上爻"]
+# 地支与五行对应已统一在 core.constants.BRANCH_WUXING
+# 卦宫五行已统一在 core.constants.PALACE_WUXING
+# 爻位名称已统一在 core.constants.POSITION_NAMES
 
 # 爻型编码（1-4 → 显示名称）
 LINE_NAMES: dict[int, str] = {1: "少阴", 2: "少阳", 3: "纯阳", 4: "纯阴"}

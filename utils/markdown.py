@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from schema.divination import DivinationResponse, HexagramInfo, LineInfo
+from schema.api.divination import DivinationResponse, HexagramInfo, LineInfo
 
 
 # ----- 参考备忘信息（与原参考项目一致）-----

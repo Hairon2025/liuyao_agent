@@ -5,8 +5,7 @@
 """
 from __future__ import annotations
 
-GAN_ORDER = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
-ZHI_ORDER = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
+from core.constants import GAN_ORDER, ZHI_ORDER
 
 XUN_START = ["甲子", "甲戌", "甲申", "甲午", "甲辰", "甲寅"]
 XUN_END = ["癸酉", "癸未", "癸巳", "癸卯", "癸丑", "癸亥"]

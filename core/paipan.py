@@ -19,6 +19,7 @@ from datetime import datetime
 from typing import TypedDict
 
 from core import bianhua, calendar, hexagrams as hex_mod, liuqin, liushen, wangshuai
+from core.constants import BRANCH_WUXING, PALACE_WUXING
 from core.wangshuai import YaoStrength
 from core.xunkong import get_xunkong
 
@@ -121,7 +122,7 @@ def _build_hexagram_result(
     for i in range(6):
         tiangan = stems[i]
         dizhi = branches[i]
-        wuxing = hex_mod.BRANCH_WUXING[dizhi]
+        wuxing = BRANCH_WUXING[dizhi]
         liqin_str = liuqin.get_liqin(wo_wuxing, wuxing) if wo_wuxing else ""
         line_results.append(
             _build_line_result(
@@ -189,7 +190,7 @@ def arrange_hexagram(
     ben_branches = hex_mod.TRIGRAM_BRANCHES_INNER[ben_inner] + hex_mod.TRIGRAM_BRANCHES_OUTER[ben_outer]
     ben_stems = hex_mod.TRIGRAM_STEMS_INNER[ben_inner] + hex_mod.TRIGRAM_STEMS_OUTER[ben_outer]
     # "我"按卦宫五行取（卦宫固定则六亲映射稳定，本卦/变卦统一规则）
-    ben_shi_wuxing = hex_mod.PALACE_WUXING[ben_palace]
+    ben_shi_wuxing = PALACE_WUXING[ben_palace]
 
     # 4. 变卦
     moving_positions = bianhua.get_moving_positions(original_hexagram)
@@ -252,7 +253,7 @@ def arrange_hexagram(
         )
 
     # 8. 加载卦辞爻辞
-    from data.hexagram_texts import get_hexagram_texts
+    from running_data.hexagram_texts import get_hexagram_texts
 
     ben_texts = get_hexagram_texts(ben_name)
     bian_texts = get_hexagram_texts(bian_info["卦名"]) if bian_info else {"卦辞": "", "爻辞": []}

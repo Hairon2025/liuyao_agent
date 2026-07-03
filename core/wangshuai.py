@@ -6,62 +6,22 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-# 爻位名称（从初爻到上爻）
-POSITION_NAMES: list[str] = ["初爻", "二爻", "三爻", "四爻", "五爻", "上爻"]
+from core.constants import (
+    BRANCH_WUXING,
+    COMBINE_BRANCH,
+    CONFLICT_BRANCH,
+    CONQUER_WUXING,
+    EXTINCTION,
+    GENERATE_WUXING,
+    IMPERIAL_WANG,
+    POSITION_NAMES,
+    TOMB_BRANCH,
+)
 
 
 class YaoStrength(TypedDict):
     score: float
     status: list[str]
-
-
-# 地支五行
-BRANCH_WUXING: dict[str, str] = {
-    "子": "水", "丑": "土", "寅": "木", "卯": "木",
-    "辰": "土", "巳": "火", "午": "火", "未": "土",
-    "申": "金", "酉": "金", "戌": "土", "亥": "水",
-}
-
-# 地支相冲（对宫）
-CONFLICT_BRANCH: dict[str, str] = {
-    "子": "午", "午": "子", "丑": "未", "未": "丑",
-    "寅": "申", "申": "寅", "卯": "酉", "酉": "卯",
-    "辰": "戌", "戌": "辰", "巳": "亥", "亥": "巳",
-}
-
-# 地支六合
-COMBINE_BRANCH: dict[str, str] = {
-    "子": "丑", "丑": "子", "寅": "亥", "亥": "寅",
-    "卯": "戌", "戌": "卯", "辰": "酉", "酉": "辰",
-    "巳": "申", "申": "巳", "午": "未", "未": "午",
-}
-
-# 入墓（爻五行 → 墓库地支）
-TOMB_BRANCH: dict[str, list[str] | str] = {
-    "木": "未", "火": "戌", "金": "丑", "水": "辰",
-    "土": ["辰", "戌", "丑", "未"],
-}
-
-# 五行相生（生者 → 被生者）
-GENERATE_WUXING: dict[str, str] = {
-    "木": "火", "火": "土", "土": "金", "金": "水", "水": "木",
-}
-
-# 五行相克（克者 → 被克者）
-CONQUER_WUXING: dict[str, str] = {
-    "木": "土", "土": "水", "水": "火", "火": "金", "金": "木",
-}
-
-# 帝旺位（仅日令判断）
-IMPERIAL_WANG: dict[str, list[str] | str] = {
-    "木": "卯", "火": "午", "金": "酉", "水": "子",
-    "土": ["辰", "戌", "丑", "未"],
-}
-
-# 长生绝位
-EXTINCTION: dict[str, str] = {
-    "木": "申", "火": "亥", "金": "寅", "水": "巳", "土": "亥",
-}
 
 
 def _to_list(v: list[str] | str) -> list[str]:

@@ -37,20 +37,21 @@ liuyao_agent/
 │   ├── bianhua.py            #   动爻 / 变卦生成
 │   ├── qigua.py              #   起卦算法（手动 / 时间 / 铜钱 / 随机）
 │   ├── paipan.py             #   排盘主函数 arrange_hexagram
-│   └── markdown.py           #   排盘结果 → 格式化 Markdown 渲染
 │
 ├── schema/                   # Pydantic 数据模型（API 请求 / 响应）
-│   └── divination.py
+│   └── api/
+│       └── divination.py
 │
 ├── utils/                    # 通用工具（外部依赖 / 纯函数）
 │   ├── bazi.py               #   公历转八字（基于 lunar_python）
 │   ├── logger.py             #   结构化日志
-│   └── llm_client.py         #   LLM 客户端抽象接口
+│   ├── llm_client.py         #   LLM 客户端抽象接口
+│   └── markdown.py           #   排盘结果 → 格式化 Markdown 渲染
 │
 ├── config/                   # 全局配置
 │   └── settings.py           #   从 .env 读取
 │
-├── data/                     # 静态数据 + 解卦记录
+├── running_data/             # 运行时数据：静态数据 + 解卦记录
 │   ├── hexagram_texts.py     #   64 卦卦辞 + 爻辞
 │   ├── divination_store.py   #   解卦结果 JSON / Markdown 存储
 │   ├── divinations_json/     #   每个解卦一个 JSON（运行时生成）
@@ -212,7 +213,7 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 
 > 本结果仅供文化娱乐参考，不构成任何人生决策依据。
 
-`schema/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明；`core/markdown.py` 渲染时也会附加该声明。
+`schema/api/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明；`utils/markdown.py` 渲染时也会附加该声明。
 
 ## 开发约定
 

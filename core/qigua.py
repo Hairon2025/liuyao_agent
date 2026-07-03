@@ -5,21 +5,15 @@
 - 2 = 少阳（-----）
 - 3 = 纯阳（动爻，→ 变少阴）
 - 4 = 纯阴（动爻，→ 变少阳）
+
+注意：起卦方式枚举（QiguaMethod）由 schema.api.divination 统一维护，
+本模块只提供起卦算法的纯函数实现。
 """
 from __future__ import annotations
 
 import random
 from datetime import datetime
-from enum import Enum
 from typing import List
-
-
-class QiguaMethod(str, Enum):
-    """起卦方式"""
-    MANUAL = "manual"
-    COIN = "coin"
-    TIME = "time"
-    RANDOM = "random"
 
 
 # 八卦序数：1=乾, 2=兑, 3=离, 4=震, 5=巽, 6=坎, 7=艮, 8=坤

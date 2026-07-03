@@ -9,9 +9,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core import arrange_hexagram, cast_by_coin, cast_by_manual, cast_by_random, cast_by_time
-from core.markdown import to_markdown
-from data import divination_store
-from schema.divination import (
+from utils.markdown import to_markdown
+from running_data import divination_store
+from schema.api.divination import (
     DivinationResponse,
     InterpretationResult,
     LineInfo,
@@ -77,7 +77,7 @@ async def create_divination(req: QiguaRequest):
     业务流程：
     1. 起卦（core.qigua）
     2. 排盘（core.paipan）
-    3. 落盘到 data/divinations_json/{id}.json
+    3. 落盘到 running_data/divinations_json/{id}.json
     4. 若 req.generate_markdown=True：渲染并落盘 Markdown，响应中带回内容
     5. 多 Agent 解卦（由 Agent 层处理，暂未接入）
     """
@@ -145,9 +145,9 @@ async def remove_divination(divination_id: str):
 async def generate_markdown(divination_id: str):
     """将指定 ID 的排盘结果渲染为格式化 Markdown 并落盘。
 
-    - 读取 data/divinations/{id}.json
-    - 调用 core.markdown.to_markdown 渲染
-    - 写入 data/divinations/{id}.md
+    - 读取 running_data/divinations_json/{id}.json
+    - 调用 utils.markdown.to_markdown 渲染
+    - 写入 running_data/divinations_md/{id}.md
     - 返回 Markdown 内容 + 落盘路径
     """
     response = divination_store.load(divination_id)

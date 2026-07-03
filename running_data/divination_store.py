@@ -1,8 +1,8 @@
 """解卦结果的本地文件存储
 
 文件位置：
-- JSON：data/divinations_json/{divination_id}.json
-- Markdown：data/divinations_md/{divination_id}.md
+- JSON：running_data/divinations_json/{divination_id}.json
+- Markdown：running_data/divinations_md/{divination_id}.md
 
 设计原则：
 - 简单优先：一个 ID 一对 JSON+MD 文件，便于人工查看与备份
@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from schema.divination import DivinationResponse
+from schema.api.divination import DivinationResponse
 
 # 拆分两个独立目录
 _JSON_DIR = Path(__file__).parent / "divinations_json"

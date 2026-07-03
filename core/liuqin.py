@@ -4,11 +4,7 @@
 """
 from __future__ import annotations
 
-# 五行相生（生者 → 被生者）
-_GENERATE = {"木": "火", "火": "土", "土": "金", "金": "水", "水": "木"}
-
-# 五行相克（克者 → 被克者）
-_CONQUER = {"木": "土", "土": "水", "水": "火", "火": "金", "金": "木"}
+from core.constants import CONQUER_WUXING, GENERATE_WUXING
 
 
 def get_liqin(wo_wuxing: str, target_wuxing: str) -> str:
@@ -28,15 +24,15 @@ def get_liqin(wo_wuxing: str, target_wuxing: str) -> str:
         return "兄弟"
 
     # 我生者 = 子孙
-    if _GENERATE.get(wo_wuxing) == target_wuxing:
+    if GENERATE_WUXING.get(wo_wuxing) == target_wuxing:
         return "子孙"
 
     # 生我者 = 父母
-    if _GENERATE.get(target_wuxing) == wo_wuxing:
+    if GENERATE_WUXING.get(target_wuxing) == wo_wuxing:
         return "父母"
 
     # 我克者 = 妻财
-    if _CONQUER.get(wo_wuxing) == target_wuxing:
+    if CONQUER_WUXING.get(wo_wuxing) == target_wuxing:
         return "妻财"
 
     # 克我者 = 官鬼
