@@ -66,7 +66,7 @@ class PaipanResult(BaseModel):
     divination_id: str = Field(..., description="解卦唯一 ID")
     question: str
     qigua_time: datetime
-    ganzhi: dict = Field(..., description="年月日时地支")
+    ganzhi: dict = Field(..., description="年月日时干支（如'丙午'）")
     xunkong: List[str] = Field(..., description="旬空地支")
     ben_gua: HexagramInfo
     bian_gua: Optional[HexagramInfo] = None

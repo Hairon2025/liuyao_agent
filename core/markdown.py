@@ -118,8 +118,8 @@ def to_markdown(response: DivinationResponse) -> str:
     md.append("## 时间地支与旬空")
     md.append("")
     md.append(
-        f"- 年支：**{gz.get('year', '—')}**　月支：**{gz.get('month', '—')}**　"
-        f"日支：**{gz.get('day', '—')}**　时支：**{gz.get('hour', '—')}**"
+        f"- 年柱：**{gz.get('year', '—')}**　月柱：**{gz.get('month', '—')}**　"
+        f"日柱：**{gz.get('day', '—')}**　时柱：**{gz.get('hour', '—')}**"
     )
     md.append(f"- 旬空：**{''.join(p.xunkong) if p.xunkong else '—'}空**")
     md.append("")

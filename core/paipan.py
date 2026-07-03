@@ -20,7 +20,7 @@ from typing import TypedDict
 
 from core import bianhua, calendar, hexagrams as hex_mod, liuqin, liushen, wangshuai
 from core.wangshuai import YaoStrength
-from core.xunkong import get_day_ganzhi, get_xunkong
+from core.xunkong import get_xunkong
 
 
 class LineResult(TypedDict):
@@ -168,12 +168,11 @@ def arrange_hexagram(
     Returns:
         结构化排盘结果 dict
     """
-    # 1. 时间地支 + 日干支 + 旬空
-    year_branch = calendar.get_year_branch(qigua_time.year)
-    month_branch = calendar.get_month_branch(qigua_time.year, qigua_time.month, qigua_time.day)
-    day_branch = calendar.get_day_branch(qigua_time.year, qigua_time.month, qigua_time.day)
-    hour_branch = calendar.get_hour_branch(qigua_time.hour)
-    day_ganzhi = get_day_ganzhi(qigua_time.year, qigua_time.month, qigua_time.day)
+    # 1. 时间干支（lunar_python 精确节气计算） + 旬空
+    ganzhi = calendar.get_ganzhi(qigua_time)
+    day_ganzhi = ganzhi["day"]                       # e.g., "丁丑"
+    month_branch = ganzhi["month"][1]                # 提取地支
+    day_branch = ganzhi["day"][1]                    # 提取地支
     xunkong = get_xunkong(day_ganzhi)
 
     # 2. 六兽顺序
@@ -297,12 +296,7 @@ def arrange_hexagram(
     return {
         "question": question,
         "qigua_time": qigua_time.isoformat(),
-        "ganzhi": {
-            "year": year_branch,
-            "month": month_branch,
-            "day": day_branch,
-            "hour": hour_branch,
-        },
+        "ganzhi": ganzhi,
         "xunkong": xunkong,
         "ben_gua": ben_gua,
         "bian_gua": bian_gua,

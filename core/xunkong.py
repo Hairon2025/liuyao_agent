@@ -1,7 +1,9 @@
-"""旬空计算（移植自参考项目 main.py）"""
-from __future__ import annotations
+"""旬空计算（移植自参考项目 main.py）
 
-from datetime import date
+日干支由调用方通过 `core.calendar.get_ganzhi()` 提供（使用 lunar_python 保证节气精度）。
+本模块仅负责：已知日干支 → 旬空地支。
+"""
+from __future__ import annotations
 
 GAN_ORDER = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"]
 ZHI_ORDER = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"]
@@ -16,23 +18,6 @@ XUN_KONG = {
     "甲辰": ["寅", "卯"],
     "甲寅": ["子", "丑"],
 }
-
-
-def get_day_stem(year: int, month: int, day: int) -> str:
-    """根据日期计算日天干（以 1900-01-01 庚子日为基准）。"""
-    base_date = date(1900, 1, 1)
-    target_date = date(year, month, day)
-    delta_days = (target_date - base_date).days
-    base_gan_index = 6  # 1900-01-01 是庚子日
-    return GAN_ORDER[(base_gan_index + delta_days) % 10]
-
-
-def get_day_ganzhi(year: int, month: int, day: int) -> str:
-    """获取日干支（天干 + 地支）。"""
-    stem = get_day_stem(year, month, day)
-    from core.calendar import get_day_branch
-    branch = get_day_branch(year, month, day)
-    return stem + branch
 
 
 def get_xunkong(day_ganzhi: str) -> list[str]:
