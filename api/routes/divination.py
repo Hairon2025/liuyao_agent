@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from core import arrange_hexagram, cast_by_coin, cast_by_manual, cast_by_random, cast_by_time
 from utils.markdown import to_markdown
 from running_data import divination_store
+from agent.liuyao_agent import analyst
 from schema.api.divination import (
     DivinationResponse,
     InterpretationResult,
@@ -179,3 +180,32 @@ async def get_markdown(divination_id: str):
         path=str(path),
         content=content,
     )
+
+
+@router.post("/{divination_id}/interpret", response_model=DivinationResponse)
+async def interpret_divination(divination_id: str):
+    """调用 LLM Agent 对指定 ID 的排盘 Markdown 进行解读，并把结果写回 divination_store。
+
+    前置条件：
+    - 解卦记录存在（POST /divinations 创建过）
+    - Markdown 文件已生成（POST /divinations/{id}/markdown）
+    """
+    response = divination_store.load(divination_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"解卦记录 {divination_id} 不存在")
+
+    if not divination_store.markdown_exists(divination_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"未找到 {divination_id} 的 Markdown，请先调用 "
+            f"POST /divinations/{divination_id}/markdown 生成",
+        )
+
+    try:
+        text = await analyst.interpret(divination_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"解卦失败：{e}")
+
+    response.interpretation = InterpretationResult(detail=text)
+    divination_store.save(divination_id, response)
+    return response
