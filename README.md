@@ -18,90 +18,76 @@
 
 ## 目录结构
 
+仓库按"端"分组：Python 后端全在 `backend/`，前端保留原名 `frontend/`，跨端的东西放根。
+
 ```
 liuyao_agent/
-├── api/                      # FastAPI HTTP 接口层
-│   ├── server.py             #   FastAPI app 入口
-│   ├── deps.py               #   依赖注入
-│   └── routes/
-│       ├── health.py         #   GET /health
-│       └── divination.py     #   解卦相关路由
+├── backend/                  # Python 后端（FastAPI + Agent + core）
+│   ├── api/                  #   FastAPI HTTP 接口层
+│   │   ├── server.py         #   FastAPI app 入口
+│   │   ├── deps.py
+│   │   └── routes/
+│   │       ├── health.py     #   GET /health
+│   │       └── divination.py
+│   ├── agent/                #   多 Agent 解卦层（依赖 LLM）
+│   ├── core/                 #   纯算法层（无 LLM 依赖）
+│   ├── schema/               #   Pydantic 数据模型
+│   ├── utils/                #   通用工具
+│   ├── config/               #   全局配置（pydantic-settings）
+│   ├── running_data/         #   静态数据 + 解卦记录 JSON/MD
+│   ├── tests/                #   pytest 单元测试
+│   ├── main.py               #   uvicorn 启动入口（默认 127.0.0.1:8022）
+│   ├── requirements.txt
+│   └── .env.example
 │
-├── core/                     # 核心业务（无 LLM 依赖的纯算法层）
-│   ├── calendar.py           #   地支计算（年月日时 → 地支）
-│   ├── hexagrams.py          #   64 卦卦宫数据 + 编码转换
-│   ├── wangshuai.py          #   爻旺衰判断
-│   ├── xunkong.py            #   旬空计算
-│   ├── liushen.py            #   六兽（青龙/朱雀/...）
-│   ├── liuqin.py             #   六亲（父母/兄弟/...）
-│   ├── bianhua.py            #   动爻 / 变卦生成
-│   ├── qigua.py              #   起卦算法（手动 / 时间 / 铜钱 / 随机）
-│   ├── paipan.py             #   排盘主函数 arrange_hexagram
+├── frontend/                 # Next.js 前端
 │
-├── schema/                   # Pydantic 数据模型（API 请求 / 响应）
-│   └── api/
-│       └── divination.py
+├── assets/
+├── logs/
 │
-├── utils/                    # 通用工具（外部依赖 / 纯函数）
-│   ├── bazi.py               #   公历转八字（基于 lunar_python）
-│   ├── logger.py             #   结构化日志
-│   ├── llm_client.py         #   LLM 客户端抽象接口
-│   └── markdown.py           #   排盘结果 → 格式化 Markdown 渲染
-│
-├── config/                   # 全局配置
-│   └── settings.py           #   从 .env 读取
-│
-├── running_data/             # 运行时数据：静态数据 + 解卦记录
-│   ├── hexagram_texts.py     #   64 卦卦辞 + 爻辞
-│   ├── divination_store.py   #   解卦结果 JSON / Markdown 存储
-│   ├── divinations_json/     #   每个解卦一个 JSON（运行时生成）
-│   └── divinations_md/       #   每个解卦一个 Markdown（运行时生成）
-│
-├── logs/                     # 运行日志
-├── tests/                    # 单元测试
-│
-├── main.py                   # 启动入口（uvicorn）
-├── requirements.txt
-├── .env.example
-├── CLAUDE.md                 # Claude Code 项目指引
-└── README.md
+├── README.md
+├── CLAUDE.md
+└── AGENTS.md
 ```
 
 ## 分层职责
 
 | 层 | 职责 | 是否依赖 LLM |
 |---|---|---|
-| `api/` | 接收 HTTP 请求、参数校验、返回响应 | 否 |
-| `core/` | 起卦、排盘等确定性的纯算法 | 否 |
-| `schema/` | 数据模型定义 | 否 |
-| `utils/` | 通用工具（八字、日志、LLM 客户端） | 视具体工具 |
-| `config/` | 全局配置加载 | 否 |
-| `agent/` (待设计) | 多 Agent 协作完成解卦解读 | 是 |
+| `backend/api/` | 接收 HTTP 请求、参数校验、返回响应 | 否 |
+| `backend/core/` | 起卦、排盘等确定性的纯算法 | 否 |
+| `backend/schema/` | 数据模型定义 | 否 |
+| `backend/utils/` | 通用工具（八字、日志、LLM 客户端） | 视具体工具 |
+| `backend/config/` | 全局配置加载 | 否 |
+| `backend/agent/` | 多 Agent 协作完成解卦解读 | **是** |
+| `backend/running_data/` | 静态数据（卦辞爻辞）+ 解卦记录 JSON/MD 落盘 | 否 |
 
-**调用方向**：`api → core / agent → schema / utils`，无反向依赖。
+**调用方向**：`backend.api → backend.core / backend.agent → backend.schema / backend.utils / backend.running_data`，无反向依赖。
 
 ## 快速开始
 
 ### 1. 安装依赖
 
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 ### 2. 配置环境变量
 
 ```bash
-cp .env.example .env
-# 编辑 .env，填入 LLM_API_KEY 等配置
+cp backend/.env.example backend/.env
+# 编辑 backend/.env，填入 LLM_API_KEY 等配置
 ```
 
-### 3. 启动服务
+### 3. 启动服务（须在仓库根目录执行，使 `backend/` 可作为 Python 包导入）
 
 ```bash
-python main.py
-# 或
-uvicorn api.server:app --reload --host 127.0.0.1 --port 8022
+python -m backend.main
+# 或：
+uvicorn backend.api.server:app --reload --host 127.0.0.1 --port 8022
 ```
+
+> 不要 `cd backend && python main.py`——那样 `backend` 不在 `sys.path`，`from backend.config import settings` 等会 `ModuleNotFoundError`。
 
 启动后访问 http://127.0.0.1:8022/docs 查看 Swagger API 文档。
 
@@ -217,10 +203,10 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 ## 路线图
 
 - [x] **阶段 0：基础架构** — FastAPI 框架 + 核心目录分层 + 数据模型
-- [x] **阶段 1：起卦 + 排盘** — `core/qigua.py` + `core/paipan.py`（移植自参考项目）
+- [x] **阶段 1：起卦 + 排盘** — `backend/core/qigua.py` + `backend/core/paipan.py`（移植自参考项目）
 - [x] **阶段 2：六十四卦数据** — 卦宫 + 卦辞爻辞全部入库
-- [x] **阶段 2.5：本地持久化** — JSON + Markdown 双格式落盘到 `data/`
-- [ ] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
+- [x] **阶段 2.5：本地持久化** — JSON + Markdown 双格式落盘到 `backend/running_data/`
+- [x] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
 - [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
 - [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
 - [ ] **阶段 6：会话与历史** — 引入持久化存储与会话管理（当前为文件存储，可平滑迁移到 DB）
@@ -231,7 +217,7 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 
 > 本结果仅供文化娱乐参考，不构成任何人生决策依据。
 
-`schema/api/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明；`utils/markdown.py` 渲染时也会附加该声明。
+`backend/schema/api/divination.py` 中的 `InterpretationResult.disclaimer` 字段已默认携带该声明；`backend/utils/markdown.py` 渲染时也会附加该声明。
 
 ## 开发约定
 
