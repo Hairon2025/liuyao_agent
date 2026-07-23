@@ -392,64 +392,222 @@ fieldset {
 
 .time-setting {
   min-height: 52px;
-  display: grid;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   margin-top: 16px;
   padding: 10px 0;
   border-top: 1px solid rgba(120, 103, 81, 0.13);
   border-bottom: 1px solid rgba(120, 103, 81, 0.13);
 }
 
-.switch-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.time-setting > span {
+  display: grid;
+  gap: 3px;
   color: var(--ink-soft);
   font-size: 11px;
 }
 
-.switch-label input {
-  position: absolute;
-  opacity: 0;
-}
-
-.switch {
-  position: relative;
-  width: 30px;
-  height: 16px;
-  border-radius: 20px;
-  background: #c6bfb4;
-  transition: 160ms ease;
-}
-
-.switch::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: white;
-  transition: transform 160ms ease;
-}
-
-.switch-label input:checked + .switch {
-  background: var(--cinnabar);
-}
-
-.switch-label input:checked + .switch::after {
-  transform: translateX(14px);
+.time-setting > span small {
+  color: #9d958a;
+  font-size: 9px;
 }
 
 .time-setting > input {
-  width: 100%;
-  margin-top: 9px;
+  width: 174px;
+  min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--line);
+  outline: none;
   background: rgba(255, 253, 248, 0.72);
   font-family: system-ui, sans-serif;
   font-size: 11px;
+}
+
+.time-setting > input:focus {
+  border-color: var(--cinnabar);
+}
+
+.coin-casting {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 50% 25%, rgba(179, 138, 79, 0.09), transparent 9rem),
+    rgba(234, 226, 212, 0.38);
+}
+
+.coin-casting-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coin-casting-head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.coin-casting-head strong {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.coin-casting-head span {
+  color: #8c8479;
+  font-size: 9px;
+}
+
+.coin-casting-head > small {
+  color: var(--cinnabar);
+  font-family: Georgia, serif;
+  font-size: 11px;
+}
+
+.coins-stage {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 12px 0 9px;
+  perspective: 600px;
+}
+
+.coin {
+  position: relative;
+  width: 53px;
+  height: 53px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #9c7136;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 30%, #ecd49e, #c89b4e 56%, #9a6b2e 100%);
+  box-shadow:
+    inset 0 0 0 3px rgba(113, 72, 24, 0.16),
+    inset 0 0 10px rgba(255, 246, 201, 0.5),
+    0 5px 10px rgba(89, 61, 29, 0.15);
+  color: #735024;
+  transform-style: preserve-3d;
+}
+
+.coin::before {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(105, 67, 24, 0.66);
+  background: #7d5529;
+  box-shadow: inset 0 0 0 2px #bd8d43;
+}
+
+.coin i {
+  position: relative;
+  z-index: 1;
+  margin-top: 31px;
+  padding: 0 3px;
+  background: #c99c4f;
+  font-size: 8px;
+  font-style: normal;
+}
+
+.coin.character {
+  transform: rotateY(180deg);
+}
+
+.coin.character i {
+  transform: rotateY(180deg);
+}
+
+.coins-stage.flipping .coin {
+  animation: coin-flip 720ms cubic-bezier(0.2, 0.72, 0.28, 1) both;
+  animation-delay: calc(var(--coin-index) * 70ms);
+}
+
+.throw-coins {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #a47c41;
+  background: rgba(255, 253, 248, 0.66);
+  color: #75562d;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+
+.throw-coins:hover:not(:disabled) {
+  background: rgba(179, 138, 79, 0.11);
+}
+
+.coin-rounds {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.coin-round {
+  min-height: 29px;
+  display: grid;
+  grid-template-columns: 33px 26px 42px 1fr;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border-left: 2px solid transparent;
+  background: rgba(255, 253, 248, 0.62);
+  font-size: 9px;
+}
+
+.coin-round.moving {
+  border-left-color: var(--cinnabar);
+  background: rgba(166, 56, 45, 0.045);
+}
+
+.coin-round > span {
+  color: #847c71;
+}
+
+.coin-round > b {
+  color: var(--ink);
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.coin-round > strong {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.coin-round.moving > strong {
+  color: var(--cinnabar);
+}
+
+.coin-round > small {
+  color: #968e82;
+  font-size: 8px;
+  text-align: right;
+}
+
+.coin-round > em {
+  grid-column: 2 / 5;
+  color: #aaa298;
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+}
+
+.reset-coins {
+  display: block;
+  margin: 9px auto 0;
+  padding: 3px 5px;
+  border: 0;
+  border-bottom: 1px solid #b7afa3;
+  background: transparent;
+  color: #8b8378;
+  font-size: 9px;
 }
 
 .cast-button {
@@ -565,49 +723,9 @@ fieldset {
   border-radius: 50%;
 }
 
-.ring-one::before,
-.ring-one::after,
-.ring-two::before,
-.ring-two::after {
-  content: "";
-  position: absolute;
-  background: var(--paper);
-  border: 1px solid rgba(126, 106, 78, 0.26);
-  transform: rotate(45deg);
-}
-
-.ring-one::before {
-  top: 7px;
-  left: 82px;
-  width: 14px;
-  height: 14px;
-}
-
-.ring-one::after {
-  right: 7px;
-  top: 82px;
-  width: 14px;
-  height: 14px;
-}
-
-.ring-two {
+.inner-ring {
   inset: 22px;
   border-style: dashed;
-  animation: slow-spin 35s linear infinite;
-}
-
-.ring-two::before {
-  right: -5px;
-  bottom: 20px;
-  width: 9px;
-  height: 9px;
-}
-
-.ring-two::after {
-  top: 20px;
-  left: -5px;
-  width: 9px;
-  height: 9px;
 }
 
 .cosmos-yin {
@@ -1372,9 +1490,15 @@ fieldset {
   animation: toast-in 180ms ease-out;
 }
 
-@keyframes slow-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes coin-flip {
+  0% {
+    transform: translateY(0) rotateX(0) rotateY(0);
+  }
+  40% {
+    transform: translateY(-19px) rotateX(540deg) rotateY(180deg);
+  }
+  100% {
+    transform: translateY(0) rotateX(1080deg) rotateY(360deg);
   }
 }
 
@@ -1462,6 +1586,15 @@ fieldset {
 
   .casting-panel::before {
     font-size: 120px;
+  }
+
+  .time-setting {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .time-setting > input {
+    width: 100%;
   }
 
   .result-panel {

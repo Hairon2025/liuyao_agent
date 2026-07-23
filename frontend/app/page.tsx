@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { DEFAULT_API_BASE, liuyaoApi } from "./api";
 import type {
   DivinationResponse,
@@ -36,6 +42,24 @@ const POSITION_NAMES: Record<number, string> = {
   5: "五爻",
   6: "上爻",
 };
+
+const COIN_RESULTS: Record<
+  number,
+  { code: number; label: string; symbol: string; moving: boolean }
+> = {
+  0: { code: 4, label: "老阴", symbol: "⚋", moving: true },
+  1: { code: 2, label: "少阳", symbol: "⚊", moving: false },
+  2: { code: 1, label: "少阴", symbol: "⚋", moving: false },
+  3: { code: 3, label: "老阳", symbol: "⚊", moving: true },
+};
+
+interface CoinRound {
+  faces: number[];
+  code: number;
+  label: string;
+  symbol: string;
+  moving: boolean;
+}
 
 type ResultTab = "paipan" | "texts" | "interpretation";
 type AppView = "workspace" | "history";
@@ -243,8 +267,8 @@ function EmptyResult() {
   return (
     <section className="empty-result">
       <div className="cosmos-mark" aria-hidden="true">
-        <span className="cosmos-ring ring-one" />
-        <span className="cosmos-ring ring-two" />
+        <span className="cosmos-ring" />
+        <span className="cosmos-ring inner-ring" />
         <span className="cosmos-yin">☯</span>
       </div>
       <p className="eyebrow">问事 · 起卦 · 明理</p>
@@ -270,8 +294,10 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [method, setMethod] = useState<QiguaMethod>("time");
   const [manualNumbers, setManualNumbers] = useState([2, 1, 2, 2, 1, 2]);
-  const [customTime, setCustomTime] = useState(false);
   const [dateTime, setDateTime] = useState(localDateTimeValue);
+  const [coinRounds, setCoinRounds] = useState<CoinRound[]>([]);
+  const [coinFaces, setCoinFaces] = useState<number[]>([1, 0, 1]);
+  const [coinFlipping, setCoinFlipping] = useState(false);
   const [result, setResult] = useState<DivinationResponse | null>(null);
   const [resultTab, setResultTab] = useState<ResultTab>("paipan");
   const [history, setHistory] = useState<DivinationResponse[]>([]);
@@ -342,13 +368,26 @@ export default function Home() {
       showToast("请先写下所问事项");
       return;
     }
+    if (method === "time" && !dateTime) {
+      showToast("请选择起卦时间");
+      return;
+    }
+    if (method === "coin" && coinRounds.length < 6) {
+      showToast(`请先完成六次投掷（当前 ${coinRounds.length}/6）`);
+      return;
+    }
     setSubmitting(true);
     try {
       const response = await liuyaoApi.create(apiBase, {
-        method,
+        method: method === "coin" ? "manual" : method,
         question: question.trim(),
         ...(method === "manual" ? { numbers: manualNumbers } : {}),
-        ...(customTime && dateTime ? { time: new Date(dateTime).toISOString() } : {}),
+        ...(method === "coin"
+          ? { numbers: coinRounds.map((round) => round.code) }
+          : {}),
+        ...(method === "time" && dateTime
+          ? { time: new Date(dateTime).toISOString() }
+          : {}),
         generate_markdown: true,
       });
       setResult(response);
@@ -362,6 +401,38 @@ export default function Home() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleCoinFlip() {
+    if (coinFlipping || coinRounds.length >= 6) return;
+    setCoinFlipping(true);
+
+    window.setTimeout(() => {
+      const randomValues = new Uint32Array(3);
+      window.crypto.getRandomValues(randomValues);
+      const faces = Array.from(randomValues, (value) => value % 2);
+      const yangCount = faces.reduce((total, face) => total + face, 0);
+      const result = COIN_RESULTS[yangCount];
+
+      setCoinFaces(faces);
+      setCoinRounds((rounds) => [
+        ...rounds,
+        {
+          faces,
+          code: result.code,
+          label: result.label,
+          symbol: result.symbol,
+          moving: result.moving,
+        },
+      ]);
+      setCoinFlipping(false);
+    }, 720);
+  }
+
+  function resetCoinCasting() {
+    setCoinRounds([]);
+    setCoinFaces([1, 0, 1]);
+    setCoinFlipping(false);
   }
 
   async function handleInterpret() {
@@ -556,28 +627,118 @@ export default function Home() {
                 </div>
               )}
 
-              <div className="time-setting">
-                <label className="switch-label">
-                  <input
-                    type="checkbox"
-                    checked={customTime}
-                    onChange={(event) => setCustomTime(event.target.checked)}
-                  />
-                  <span className="switch" />
-                  自定义起卦时间
-                </label>
-                {customTime && (
+              {method === "coin" && (
+                <div className="coin-casting">
+                  <div className="coin-casting-head">
+                    <div>
+                      <strong>三枚铜钱 · 六次成卦</strong>
+                      <span>花为阳，字为阴；从初爻依次向上</span>
+                    </div>
+                    <small>{coinRounds.length} / 6</small>
+                  </div>
+
+                  <div
+                    className={`coins-stage ${coinFlipping ? "flipping" : ""}`}
+                    aria-live="polite"
+                  >
+                    {coinFaces.map((face, index) => (
+                      <span
+                        className={`coin ${face ? "flower" : "character"}`}
+                        key={index}
+                        style={{ "--coin-index": index } as CSSProperties}
+                      >
+                        <i>{face ? "花" : "字"}</i>
+                      </span>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="throw-coins"
+                    onClick={handleCoinFlip}
+                    disabled={coinFlipping || coinRounds.length >= 6}
+                  >
+                    {coinFlipping
+                      ? "铜钱翻转中…"
+                      : coinRounds.length >= 6
+                        ? "六次投掷已完成"
+                        : `投掷第 ${coinRounds.length + 1} 次`}
+                  </button>
+
+                  <div className="coin-rounds" aria-label="六次投掷结果">
+                    {Array.from({ length: 6 }, (_, index) => {
+                      const round = coinRounds[index];
+                      return (
+                        <div
+                          className={`coin-round ${
+                            round?.moving ? "moving" : ""
+                          }`}
+                          key={index}
+                        >
+                          <span>{POSITION_NAMES[index + 1]}</span>
+                          {round ? (
+                            <>
+                              <b>{round.symbol}</b>
+                              <strong>{round.label}</strong>
+                              <small>
+                                {round.faces
+                                  .map((face) => (face ? "花" : "字"))
+                                  .join(" · ")}
+                              </small>
+                            </>
+                          ) : (
+                            <em>待投掷</em>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {coinRounds.length > 0 && (
+                    <button
+                      type="button"
+                      className="reset-coins"
+                      onClick={resetCoinCasting}
+                      disabled={coinFlipping}
+                    >
+                      重新投掷
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {method === "time" && (
+                <label className="time-setting">
+                  <span>
+                    起卦时间
+                    <small>请选择你要用于起卦的具体时间</small>
+                  </span>
                   <input
                     type="datetime-local"
                     value={dateTime}
                     onChange={(event) => setDateTime(event.target.value)}
                     aria-label="起卦时间"
+                    required
                   />
-                )}
-              </div>
+                </label>
+              )}
 
-              <button className="cast-button" type="submit" disabled={submitting}>
-                <span>{submitting ? "正在推演" : "开始起卦"}</span>
+              <button
+                className="cast-button"
+                type="submit"
+                disabled={
+                  submitting || (method === "coin" && coinRounds.length < 6)
+                }
+              >
+                <span>
+                  {submitting
+                    ? "正在推演"
+                    : method === "coin"
+                      ? coinRounds.length < 6
+                        ? `还需投掷 ${6 - coinRounds.length} 次`
+                        : "以六爻结果起卦"
+                      : "开始起卦"}
+                </span>
                 <i>{submitting ? "···" : "→"}</i>
               </button>
               <p className="form-hint">将生成完整排盘并保存至历史记录</p>
