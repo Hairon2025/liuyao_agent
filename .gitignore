@@ -40,6 +40,8 @@ running_data/divinations_md/*.md
 *.bak
 *.swp
 
+.env.example
+
 
 六爻模版.md
 六爻算卦助手的商业idea.md
