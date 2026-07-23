@@ -7,6 +7,8 @@ import {
   useState,
   type CSSProperties,
 } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { DEFAULT_API_BASE, liuyaoApi } from "./api";
 import type {
   DivinationResponse,
@@ -241,24 +243,17 @@ function TextsPanel({ result }: { result: DivinationResponse }) {
 }
 
 function SimpleMarkdown({ content }: { content: string }) {
-  const blocks = content.split("\n");
+  const trimmed = content.trim();
+  const outerFence = trimmed.match(
+    /^```(?:markdown|md)?[ \t]*\n([\s\S]*?)\n```[ \t]*$/i,
+  );
+  const markdown = outerFence ? outerFence[1] : trimmed;
+
   return (
     <div className="markdown-body">
-      {blocks.map((raw, index) => {
-        const line = raw.trim();
-        if (!line) return <div className="md-space" key={index} />;
-        if (line.startsWith("### "))
-          return <h4 key={index}>{line.slice(4)}</h4>;
-        if (line.startsWith("## "))
-          return <h3 key={index}>{line.slice(3)}</h3>;
-        if (line.startsWith("# "))
-          return <h2 key={index}>{line.slice(2)}</h2>;
-        if (line.startsWith("> "))
-          return <blockquote key={index}>{line.slice(2)}</blockquote>;
-        if (line.startsWith("- "))
-          return <p className="md-list" key={index}>• {line.slice(2)}</p>;
-        return <p key={index}>{line.replaceAll("**", "")}</p>;
-      })}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+        {markdown}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -915,12 +910,14 @@ export default function Home() {
                     onClick={() => openHistoryItem(record)}
                   >
                     <MiniHexagram hexagram={record.paipan.ben_gua} />
-                    <div>
+                    <div className="history-copy">
                       <span>
                         #{record.divination_id} ·{" "}
                         {formatDateTime(record.paipan.qigua_time)}
                       </span>
-                      <h2>{record.paipan.question}</h2>
+                      <h2 title={record.paipan.question}>
+                        {record.paipan.question}
+                      </h2>
                       <p>
                         {record.paipan.ben_gua.name}
                         {record.paipan.bian_gua
