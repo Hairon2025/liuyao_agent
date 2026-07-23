@@ -105,6 +105,19 @@ uvicorn api.server:app --reload --host 127.0.0.1 --port 8022
 
 启动后访问 http://127.0.0.1:8022/docs 查看 Swagger API 文档。
 
+### 启动前端
+
+前端项目位于 `frontend/`，默认连接 `http://127.0.0.1:8022`：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+如后端部署在其他地址，复制 `frontend/.env.example` 为
+`frontend/.env.local`，并修改 `NEXT_PUBLIC_API_BASE_URL`。
+
 ## API 端点
 
 | 方法 | 路径 | 功能 |
@@ -115,6 +128,7 @@ uvicorn api.server:app --reload --host 127.0.0.1 --port 8022
 | `GET` | `/divinations/{id}` | 按 ID 查询解卦结果 |
 | `POST` | `/divinations/{id}/markdown` | 渲染并落盘 Markdown |
 | `GET` | `/divinations/{id}/markdown` | 读取已生成的 Markdown |
+| `POST` | `/divinations/{id}/interpret` | 调用 Agent 生成解读并写回记录 |
 | `DELETE` | `/divinations/{id}` | 删除记录（JSON + MD） |
 
 ### 起卦方式
@@ -127,6 +141,10 @@ uvicorn api.server:app --reload --host 127.0.0.1 --port 8022
 | `random` | 无 | 一键随机生成 |
 
 **爻位编码**：`1`=少阴，`2`=少阳，`3`=纯阳（动爻），`4`=纯阴（动爻）。
+
+前端铜钱起卦会逐次模拟三枚铜钱翻转，共完成六掷；每次即时换算为
+少阴 / 少阳 / 老阳 / 老阴，最终将六个爻位编码通过 `manual` 方式提交，
+不依赖后端当前的 `coin` 随机实现。
 
 ### 调用示例
 
