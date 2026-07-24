@@ -363,7 +363,7 @@ export default function Home() {
       showToast("请先写下所问事项");
       return;
     }
-    if (method === "time" && !dateTime) {
+    if ((method === "time" || method === "manual") && !dateTime) {
       showToast("请选择起卦时间");
       return;
     }
@@ -380,7 +380,7 @@ export default function Home() {
         ...(method === "coin"
           ? { numbers: coinRounds.map((round) => round.code) }
           : {}),
-        ...(method === "time" && dateTime
+        ...((method === "time" || method === "manual") && dateTime
           ? { time: new Date(dateTime).toISOString() }
           : {}),
         generate_markdown: true,
@@ -705,11 +705,15 @@ export default function Home() {
                 </div>
               )}
 
-              {method === "time" && (
+              {(method === "time" || method === "manual") && (
                 <label className="time-setting">
                   <span>
                     起卦时间
-                    <small>请选择你要用于起卦的具体时间</small>
+                    <small>
+                      {method === "manual"
+                        ? "指定这组手动卦象对应的起卦时间"
+                        : "请选择你要用于起卦的具体时间"}
+                    </small>
                   </span>
                   <input
                     type="datetime-local"
