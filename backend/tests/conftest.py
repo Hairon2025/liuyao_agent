@@ -15,7 +15,7 @@ from sqlalchemy.pool import NullPool
 
 from backend.api.server import app
 from backend.db.base import Base
-from backend.db.session import get_db_session
+from backend.db.session import enable_sqlite_foreign_keys, get_db_session
 import backend.models  # noqa: F401  # 确保测试建表时已注册全部 Model
 
 
@@ -27,6 +27,7 @@ def client(tmp_path) -> TestClient:
         f"sqlite+aiosqlite:///{database_path.as_posix()}",
         poolclass=NullPool,
     )
+    enable_sqlite_foreign_keys(test_engine)
     session_factory = async_sessionmaker(
         bind=test_engine,
         expire_on_commit=False,

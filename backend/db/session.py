@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
@@ -12,19 +13,23 @@ from sqlalchemy.ext.asyncio import (
 
 from backend.config.settings import settings
 
+def enable_sqlite_foreign_keys(async_engine: AsyncEngine) -> None:
+    """为 SQLite 异步引擎的每条连接开启外键约束。"""
+
+    @event.listens_for(async_engine.sync_engine, "connect")
+    def _enable_sqlite_foreign_keys(dbapi_connection, _) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 engine = create_async_engine(
     settings.database_url,
     pool_pre_ping=True,
 )
 
-
 if settings.database_url.startswith("sqlite"):
-    @event.listens_for(engine.sync_engine, "connect")
-    def _enable_sqlite_foreign_keys(dbapi_connection, _) -> None:
-        """SQLite 默认不执行外键约束，这里为每条连接显式开启。"""
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    enable_sqlite_foreign_keys(engine)
 
 
 AsyncSessionFactory = async_sessionmaker(

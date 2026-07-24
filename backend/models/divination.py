@@ -12,6 +12,8 @@ from backend.db.base import Base
 from backend.models.user import utc_now
 
 if TYPE_CHECKING:
+    from backend.models.chat_message import ChatMessage
+    from backend.models.chat_session import ChatSession
     from backend.models.user import User
 
 
@@ -64,3 +66,11 @@ class Divination(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="divinations")
+    active_chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="active_divination",
+        passive_deletes=True,
+    )
+    chat_messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="divination",
+        passive_deletes=True,
+    )

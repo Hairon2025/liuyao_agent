@@ -11,6 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.db.base import Base
 
 if TYPE_CHECKING:
+    from backend.models.chat_session import ChatSession
     from backend.models.divination import Divination
 
 
@@ -62,6 +63,11 @@ class User(Base):
         onupdate=utc_now,
     )
     divinations: Mapped[list["Divination"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
