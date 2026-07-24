@@ -641,9 +641,12 @@ export default function Home() {
                         className={`coin ${face ? "flower" : "character"}`}
                         key={index}
                         style={{ "--coin-index": index } as CSSProperties}
-                      >
-                        <i>{face ? "花" : "字"}</i>
-                      </span>
+                        role="img"
+                        aria-label={`第 ${index + 1} 枚铜钱，${
+                          face ? "花面" : "字面"
+                        }`}
+                        title={face ? "花面" : "字面"}
+                      />
                     ))}
                   </div>
 

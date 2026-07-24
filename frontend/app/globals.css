@@ -479,48 +479,44 @@ fieldset {
 
 .coin {
   position: relative;
-  width: 53px;
-  height: 53px;
-  display: grid;
-  place-items: center;
-  border: 2px solid #9c7136;
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  overflow: hidden;
+  border: 1px solid rgba(98, 61, 25, 0.72);
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 30%, #ecd49e, #c89b4e 56%, #9a6b2e 100%);
+  background-color: #a97634;
+  background-image: url("/assets/coin-faces.png");
+  background-repeat: no-repeat;
+  background-size: 157px auto;
   box-shadow:
-    inset 0 0 0 3px rgba(113, 72, 24, 0.16),
-    inset 0 0 10px rgba(255, 246, 201, 0.5),
-    0 5px 10px rgba(89, 61, 29, 0.15);
-  color: #735024;
+    inset 0 0 0 1px rgba(255, 224, 156, 0.28),
+    0 5px 11px rgba(70, 43, 19, 0.24);
+  filter: saturate(0.9) contrast(1.06);
+  backface-visibility: hidden;
   transform-style: preserve-3d;
 }
 
-.coin::before {
+.coin::after {
   content: "";
   position: absolute;
-  width: 13px;
-  height: 13px;
-  border: 1px solid rgba(105, 67, 24, 0.66);
-  background: #7d5529;
-  box-shadow: inset 0 0 0 2px #bd8d43;
-}
-
-.coin i {
-  position: relative;
-  z-index: 1;
-  margin-top: 31px;
-  padding: 0 3px;
-  background: #c99c4f;
-  font-size: 8px;
-  font-style: normal;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 244, 201, 0.26),
+    transparent 42%,
+    rgba(54, 31, 13, 0.13)
+  );
+  pointer-events: none;
 }
 
 .coin.character {
-  transform: rotateY(180deg);
+  background-position: -14px -12px;
 }
 
-.coin.character i {
-  transform: rotateY(180deg);
+.coin.flower {
+  background-position: -85px -12px;
 }
 
 .coins-stage.flipping .coin {
