@@ -1,17 +1,22 @@
 """解卦相关路由"""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from backend.core import arrange_hexagram, cast_by_coin, cast_by_manual, cast_by_random, cast_by_time
-from backend.utils.markdown import to_markdown
-from backend.running_data import divination_store
 from backend.agent.liuyao_agent import analyst
+from backend.core import (
+    arrange_hexagram,
+    cast_by_manual,
+    cast_by_random,
+    cast_by_time,
+)
+from backend.running_data import divination_store
 from backend.schema.api.divination import (
     DivinationResponse,
     InterpretationResult,
@@ -20,6 +25,8 @@ from backend.schema.api.divination import (
     PaipanResult,
     QiguaRequest,
 )
+from backend.utils.markdown import to_markdown
+from backend.utils.sse import text_stream_to_sse
 
 router = APIRouter(prefix="/divinations", tags=["divination"])
 
@@ -66,6 +73,21 @@ def _do_qigua(req: QiguaRequest) -> tuple[list[int], datetime]:
         return cast_by_random(), dt
 
     raise HTTPException(status_code=400, detail=f"未知起卦方式：{req.method}")
+
+
+def _load_interpretable_divination(divination_id: str) -> DivinationResponse:
+    """读取可解读的卦例，并统一处理流式/非流式接口的前置校验。"""
+    response = divination_store.load(divination_id)
+    if response is None:
+        raise HTTPException(status_code=404, detail=f"解卦记录 {divination_id} 不存在")
+
+    if not divination_store.markdown_exists(divination_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"未找到 {divination_id} 的 Markdown，请先调用 "
+            f"POST /divinations/{divination_id}/markdown 生成",
+        )
+    return response
 
 
 @router.post("", response_model=DivinationResponse)
@@ -187,16 +209,7 @@ async def interpret_divination(divination_id: str):
     - 解卦记录存在（POST /divinations 创建过）
     - Markdown 文件已生成（POST /divinations/{id}/markdown）
     """
-    response = divination_store.load(divination_id)
-    if response is None:
-        raise HTTPException(status_code=404, detail=f"解卦记录 {divination_id} 不存在")
-
-    if not divination_store.markdown_exists(divination_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"未找到 {divination_id} 的 Markdown，请先调用 "
-            f"POST /divinations/{divination_id}/markdown 生成",
-        )
+    response = _load_interpretable_divination(divination_id)
 
     try:
         text = await analyst.interpret(divination_id)
@@ -206,3 +219,27 @@ async def interpret_divination(divination_id: str):
     response.interpretation = InterpretationResult(detail=text)
     divination_store.save(divination_id, response)
     return response
+
+
+@router.post("/{divination_id}/interpret/stream")
+async def interpret_divination_stream(divination_id: str):
+    """以 SSE 流式输出解卦文本，并在完整生成后自动落库。"""
+    response = _load_interpretable_divination(divination_id)
+
+    async def save_interpretation(full_content: str) -> None:
+        response.interpretation = InterpretationResult(detail=full_content)
+        await asyncio.to_thread(divination_store.save, divination_id, response)
+
+    return StreamingResponse(
+        text_stream_to_sse(
+            analyst.interpret_stream(divination_id),
+            on_complete=save_interpretation,
+            error_prefix="解卦失败：",
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

@@ -4,9 +4,17 @@
 并通过 chat(user_input) 调用 LLM。
 """
 import os
+from collections.abc import AsyncIterator
 
 from backend.config.settings import settings
-from agents import Agent, Runner, set_default_openai_api, set_tracing_disabled
+from agents import (
+    Agent,
+    RawResponsesStreamEvent,
+    Runner,
+    set_default_openai_api,
+    set_tracing_disabled,
+)
+from openai.types.responses import ResponseTextDeltaEvent
 
 # 将 settings 中的 LLM 配置映射到 openai-agents SDK 期望的 env var
 # 用 setdefault，shell 里实际设过的 OPENAI_API_KEY / OPENAI_BASE_URL 优先
@@ -32,3 +40,18 @@ class BaseAgent:
         """运行 agent，返回模型回复文本。"""
         result = await Runner.run(self.agent, user_input)
         return result.final_output
+
+    async def chat_stream(self, user_input: str) -> AsyncIterator[str]:
+        """运行 agent，并逐段返回模型生成的文本。
+
+        使用 Agents SDK 原生流式接口，确保模型、instructions、工具和后续
+        handoff 等配置与 ``chat()`` 保持一致。
+        """
+        result = Runner.run_streamed(self.agent, user_input)
+        async for event in result.stream_events():
+            if (
+                isinstance(event, RawResponsesStreamEvent)
+                and isinstance(event.data, ResponseTextDeltaEvent)
+                and event.data.delta
+            ):
+                yield event.data.delta

@@ -1,12 +1,13 @@
 """divination 路由单元测试
 
-覆盖 api/routes/divination.py 中的 6 个端点 + 3 个 helper 函数：
+覆盖 api/routes/divination.py 中的主要端点 + helper 函数：
 - POST   /divinations                  — 4 种起卦方式 + 参数校验
 - GET    /divinations                  — 列表
 - GET    /divinations/{id}             — 查询（200 / 404）
 - DELETE /divinations/{id}             — 删除（204 / 404）
 - POST   /divinations/{id}/markdown    — 生成 Markdown
 - GET    /divinations/{id}/markdown    — 读取 Markdown
+- POST   /divinations/{id}/interpret/stream — SSE 流式解读
 - _build_lines / _build_hexagram / _do_qigua (helper)
 
 运行方式（在 backend/ 目录下）：
@@ -19,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from backend.api.routes import divination as divination_routes
 from backend.api.routes.divination import _build_hexagram, _build_lines, _do_qigua
 from backend.running_data import divination_store
 
@@ -425,7 +427,106 @@ class TestGetMarkdown:
 
 
 # ============================================================
-# 7. Helper functions
+# 7. POST /divinations/{id}/interpret/stream — SSE 流式解读
+# ============================================================
+
+
+class TestInterpretDivinationStream:
+    """POST /divinations/{id}/interpret/stream"""
+
+    @staticmethod
+    def _make_with_markdown(
+        client: Any, created_divination_ids: list[str]
+    ) -> str:
+        resp = client.post(
+            "/divinations",
+            json={
+                "method": "manual",
+                "question": "SSE 流式解读测试",
+                "numbers": [2, 1, 2, 2, 1, 2],
+                "generate_markdown": True,
+            },
+        )
+        assert resp.status_code == 200
+        divination_id = resp.json()["divination_id"]
+        created_divination_ids.append(divination_id)
+        return divination_id
+
+    def test_streams_multiline_chunks_and_persists_full_interpretation(
+        self,
+        client: Any,
+        created_divination_ids: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """文本逐块发送，正常完成后发送 [DONE] 并保存完整解读。"""
+        divination_id = self._make_with_markdown(client, created_divination_ids)
+
+        async def fake_interpret_stream(_: str):
+            yield "# 总论\n"
+            yield "**整体平稳。**"
+
+        monkeypatch.setattr(
+            divination_routes.analyst,
+            "interpret_stream",
+            fake_interpret_stream,
+        )
+
+        with client.stream(
+            "POST", f"/divinations/{divination_id}/interpret/stream"
+        ) as resp:
+            body = "".join(resp.iter_text())
+
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/event-stream")
+        assert body == (
+            "data: # 总论\n"
+            "data: \n\n"
+            "data: **整体平稳。**\n\n"
+            "data: [DONE]\n\n"
+        )
+
+        saved = divination_store.load(divination_id)
+        assert saved is not None
+        assert saved.interpretation is not None
+        assert saved.interpretation.detail == "# 总论\n**整体平稳。**"
+
+    def test_stream_failure_sends_error_without_done_or_partial_persistence(
+        self,
+        client: Any,
+        created_divination_ids: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """生成中途失败时发送错误消息，不发送 [DONE]，也不保存半截内容。"""
+        divination_id = self._make_with_markdown(client, created_divination_ids)
+
+        async def failing_interpret_stream(_: str):
+            yield "已经生成的部分"
+            raise RuntimeError("模型连接中断")
+
+        monkeypatch.setattr(
+            divination_routes.analyst,
+            "interpret_stream",
+            failing_interpret_stream,
+        )
+
+        with client.stream(
+            "POST", f"/divinations/{divination_id}/interpret/stream"
+        ) as resp:
+            body = "".join(resp.iter_text())
+
+        assert resp.status_code == 200
+        assert "data: 已经生成的部分\n\n" in body
+        assert "data: [ERROR]解卦失败：模型连接中断\n\n" in body
+        assert "data: [DONE]\n\n" not in body
+
+        saved = divination_store.load(divination_id)
+        assert saved is not None
+        assert saved.interpretation is not None
+        assert saved.interpretation.detail is None
+
+
+# ============================================================
+# 8. Helper functions
 # ============================================================
 
 

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
@@ -65,6 +66,26 @@ interface CoinRound {
 
 type ResultTab = "paipan" | "texts" | "interpretation";
 type AppView = "workspace" | "history";
+
+const DEFAULT_DISCLAIMER =
+  "本结果仅供文化娱乐参考，不构成任何人生决策依据。";
+
+function withInterpretation(
+  response: DivinationResponse,
+  detail: string,
+): DivinationResponse {
+  return {
+    ...response,
+    interpretation: {
+      summary: response.interpretation?.summary ?? null,
+      detail,
+      yongshen_analysis: response.interpretation?.yongshen_analysis ?? null,
+      dongbian_analysis: response.interpretation?.dongbian_analysis ?? null,
+      disclaimer:
+        response.interpretation?.disclaimer || DEFAULT_DISCLAIMER,
+    },
+  };
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -299,6 +320,11 @@ export default function Home() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [interpreting, setInterpreting] = useState(false);
+  const [streamingInterpretation, setStreamingInterpretation] = useState<
+    string | null
+  >(null);
+  const [interpretationError, setInterpretationError] = useState("");
+  const interpretationAbortRef = useRef<AbortController | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
     "checking",
   );
@@ -341,6 +367,13 @@ export default function Home() {
       cancelled = true;
     };
   }, [checkApi]);
+
+  useEffect(
+    () => () => {
+      interpretationAbortRef.current?.abort();
+    },
+    [],
+  );
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -385,6 +418,11 @@ export default function Home() {
           : {}),
         generate_markdown: true,
       });
+      interpretationAbortRef.current?.abort();
+      interpretationAbortRef.current = null;
+      setInterpreting(false);
+      setStreamingInterpretation(null);
+      setInterpretationError("");
       setResult(response);
       setResultTab("paipan");
       setApiStatus("online");
@@ -431,20 +469,68 @@ export default function Home() {
   }
 
   async function handleInterpret() {
-    if (!result) return;
+    if (!result || interpreting) return;
+
+    const divinationId = result.divination_id;
+    const controller = new AbortController();
+    interpretationAbortRef.current?.abort();
+    interpretationAbortRef.current = controller;
     setInterpreting(true);
+    setStreamingInterpretation("");
+    setInterpretationError("");
+    setResultTab("interpretation");
+
     try {
       if (!result.markdown_content) {
-        await liuyaoApi.generateMarkdown(apiBase, result.divination_id);
+        const markdown = await liuyaoApi.generateMarkdown(apiBase, divinationId);
+        setResult((current) =>
+          current?.divination_id === divinationId
+            ? {
+                ...current,
+                markdown_path: markdown.path,
+                markdown_content: markdown.content,
+              }
+            : current,
+        );
       }
-      const response = await liuyaoApi.interpret(apiBase, result.divination_id);
-      setResult(response);
-      setResultTab("interpretation");
+
+      const fullContent = await liuyaoApi.interpretStream(
+        apiBase,
+        divinationId,
+        (content) => {
+          if (!controller.signal.aborted) {
+            setStreamingInterpretation(content);
+          }
+        },
+        controller.signal,
+      );
+
+      setResult((current) =>
+        current?.divination_id === divinationId
+          ? withInterpretation(current, fullContent)
+          : current,
+      );
+      setHistory((items) =>
+        items.map((item) =>
+          item.divination_id === divinationId
+            ? withInterpretation(item, fullContent)
+            : item,
+        ),
+      );
+      setStreamingInterpretation(null);
       showToast("AI 解读已生成");
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "AI 解读失败");
+      if (!controller.signal.aborted) {
+        const message =
+          error instanceof Error ? error.message : "AI 解读失败";
+        setInterpretationError(message);
+        showToast(message);
+      }
     } finally {
-      setInterpreting(false);
+      if (interpretationAbortRef.current === controller) {
+        interpretationAbortRef.current = null;
+        setInterpreting(false);
+      }
     }
   }
 
@@ -466,6 +552,11 @@ export default function Home() {
   }
 
   function openHistoryItem(record: DivinationResponse) {
+    interpretationAbortRef.current?.abort();
+    interpretationAbortRef.current = null;
+    setInterpreting(false);
+    setStreamingInterpretation(null);
+    setInterpretationError("");
     setResult(record);
     setResultTab(record.interpretation?.detail ? "interpretation" : "paipan");
     setView("workspace");
@@ -475,6 +566,9 @@ export default function Home() {
     setView("history");
     void loadHistory();
   }
+
+  const interpretationContent =
+    streamingInterpretation ?? result?.interpretation?.detail ?? "";
 
   function downloadMarkdown() {
     if (!result?.markdown_content) {
@@ -834,7 +928,7 @@ export default function Home() {
                     >
                       {label}
                       {id === "interpretation" &&
-                        result.interpretation?.detail && <i />}
+                        interpretationContent && <i />}
                     </button>
                   ))}
                 </div>
@@ -863,20 +957,59 @@ export default function Home() {
                 {resultTab === "texts" && <TextsPanel result={result} />}
 
                 {resultTab === "interpretation" && (
-                  <section className="interpretation-panel">
-                    {result.interpretation?.detail ? (
+                  <section
+                    className="interpretation-panel"
+                    aria-busy={interpreting}
+                  >
+                    {interpretationContent ? (
                       <>
                         <div className="interpretation-heading">
                           <span>AI 参详</span>
-                          <p>基于当前排盘与传统六爻规则生成</p>
+                          <p>
+                            {interpreting
+                              ? "正在生成，解读内容将实时呈现"
+                              : "基于当前排盘与传统六爻规则生成"}
+                          </p>
                         </div>
-                        <SimpleMarkdown content={result.interpretation.detail} />
+                        {interpreting && (
+                          <div
+                            className="interpretation-stream-status"
+                            role="status"
+                          >
+                            <i />
+                            <span>AI 正在继续参详…</span>
+                          </div>
+                        )}
+                        <div aria-live="polite">
+                          <SimpleMarkdown content={interpretationContent} />
+                        </div>
                       </>
+                    ) : interpreting ? (
+                      <div
+                        className="interpretation-empty interpretation-loading"
+                        role="status"
+                      >
+                        <span>解</span>
+                        <h3>正在研读排盘</h3>
+                        <p>首段内容生成后，会立即显示在这里。</p>
+                        <div className="streaming-dots" aria-hidden="true">
+                          <i />
+                          <i />
+                          <i />
+                        </div>
+                      </div>
                     ) : (
                       <div className="interpretation-empty">
                         <span>解</span>
-                        <h3>尚未生成解读</h3>
-                        <p>调用当前 LiuYao Analyst，对用神、动变与吉凶趋势作综合参详。</p>
+                        <h3>
+                          {interpretationError
+                            ? "解读生成中断"
+                            : "尚未生成解读"}
+                        </h3>
+                        <p>
+                          {interpretationError ||
+                            "调用当前 LiuYao Analyst，对用神、动变与吉凶趋势作综合参详。"}
+                        </p>
                         <button
                           type="button"
                           onClick={handleInterpret}
@@ -886,9 +1019,17 @@ export default function Home() {
                         </button>
                       </div>
                     )}
+                    {interpretationError && interpretationContent && (
+                      <div className="interpretation-error" role="alert">
+                        <span>{interpretationError}</span>
+                        <button type="button" onClick={handleInterpret}>
+                          重新生成
+                        </button>
+                      </div>
+                    )}
                     <p className="disclaimer">
                       {result.interpretation?.disclaimer ||
-                        "本结果仅供文化娱乐参考，不构成任何人生决策依据。"}
+                        DEFAULT_DISCLAIMER}
                     </p>
                   </section>
                 )}

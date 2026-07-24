@@ -5,6 +5,7 @@
 - 每次 interpret(divination_id) 时从 record + md 文件读出真实数据，str.format() 填进模板
 - 填充后的整段文本作为 LLM 的 user 消息
 """
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from backend.agent.base_agent import BaseAgent
@@ -46,6 +47,18 @@ class LiuYaoAnalyst(BaseAgent):
             paipan_markdown=md,
         )
         return await self.chat(user_prompt)
+
+    async def interpret_stream(self, divination_id: str) -> AsyncIterator[str]:
+        """读取排盘 Markdown，并逐段返回 Agent 解读文本。"""
+        md = divination_store.load_markdown(divination_id)
+        if md is None:
+            raise FileNotFoundError(
+                f"未找到 {divination_id} 的 Markdown，请先调用 "
+                f"POST /divinations/{divination_id}/markdown 生成"
+            )
+        user_prompt = self._template.format(paipan_markdown=md)
+        async for chunk in self.chat_stream(user_prompt):
+            yield chunk
 
 
 # 模块级单例，避免每次请求都重新读 prompt 文件
