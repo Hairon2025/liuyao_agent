@@ -6,17 +6,55 @@
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from backend.api.server import app
+from backend.db.base import Base
+from backend.db.session import get_db_session
+import backend.models  # noqa: F401  # 确保测试建表时已注册全部 Model
 from backend.running_data import divination_store
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """FastAPI TestClient 实例。"""
-    return TestClient(app)
+def client(tmp_path) -> TestClient:
+    """使用独立临时 SQLite 数据库的 FastAPI TestClient。"""
+    database_path = tmp_path / "test.db"
+    test_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{database_path.as_posix()}",
+        poolclass=NullPool,
+    )
+    session_factory = async_sessionmaker(
+        bind=test_engine,
+        expire_on_commit=False,
+        autoflush=False,
+    )
+
+    async def prepare_database() -> None:
+        async with test_engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+
+    async def override_db_session():
+        async with session_factory() as session:
+            try:
+                yield session
+            except Exception:
+                await session.rollback()
+                raise
+
+    asyncio.run(prepare_database())
+    app.dependency_overrides[get_db_session] = override_db_session
+
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+        asyncio.run(test_engine.dispose())
 
 
 @pytest.fixture

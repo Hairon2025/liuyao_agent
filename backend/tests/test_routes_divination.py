@@ -111,10 +111,14 @@ class TestCreateDivination:
     def test_coin_qigua_returns_valid_hexagram(
         self, client: Any, created_divination_ids: list[str]
     ):
-        """铜钱起卦：返回合法卦象（6 爻在 1-4 之间，动爻可能存在）。"""
+        """铜钱结果由前端投掷后传入，后端按六爻编码完成排盘。"""
         resp = client.post(
             "/divinations",
-            json={"method": "coin", "question": "测试铜钱"},
+            json={
+                "method": "coin",
+                "question": "测试铜钱",
+                "numbers": [2, 1, 2, 2, 1, 2],
+            },
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -618,11 +622,12 @@ class TestDoQigua:
             assert n in (1, 2, 3, 4)
 
     def test_coin_returns_six_valid_numbers(self):
-        req = _make_qigua_request(method="coin")
+        req = _make_qigua_request(
+            method="coin",
+            numbers=[2, 1, 2, 2, 1, 2],
+        )
         lines, _ = _do_qigua(req)
-        assert len(lines) == 6
-        for n in lines:
-            assert n in (1, 2, 3, 4)
+        assert lines == [2, 1, 2, 2, 1, 2]
 
 
 def _make_qigua_request(method: str, numbers=None, time=None):

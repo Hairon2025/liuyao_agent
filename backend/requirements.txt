@@ -5,6 +5,11 @@ pydantic-settings
 lunar-python
 python-dotenv
 
+# 数据库与迁移
+sqlalchemy>=2.0
+aiosqlite>=0.20
+alembic>=1.13
+
 # LLM Agent
 openai
 openai-agents

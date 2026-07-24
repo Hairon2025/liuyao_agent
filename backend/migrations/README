@@ -1,0 +1,7 @@
+本目录由 Alembic 管理。
+
+常用命令（在项目根目录执行）：
+
+    alembic -c backend/alembic.ini upgrade head
+    alembic -c backend/alembic.ini revision --autogenerate -m "变更说明"
+    alembic -c backend/alembic.ini downgrade -1

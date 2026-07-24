@@ -63,7 +63,10 @@ def _do_qigua(req: QiguaRequest) -> tuple[list[int], datetime]:
 
     if req.method.value == "manual" or req.method.value == "coin":
         if not req.numbers:
-            raise HTTPException(status_code=400, detail="manual 起卦需要提供 numbers")
+            raise HTTPException(
+                status_code=400,
+                detail="manual/coin 起卦需要提供 numbers",
+            )
         return cast_by_manual(req.numbers), dt
 
     if req.method.value == "time":

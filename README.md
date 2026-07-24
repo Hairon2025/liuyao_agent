@@ -12,6 +12,7 @@
 
 - **Web 框架**：FastAPI + Uvicorn
 - **数据校验**：Pydantic v2 + pydantic-settings
+- **数据库**：SQLAlchemy 2.x + SQLite + Alembic
 - **八字排盘**：lunar_python
 - **LLM 客户端**：抽象层 (`utils/llm_client.py`)，后续可接入 OpenAI / Anthropic / 本地模型
 - **Agent 框架**：待设计（参见下方"路线图"）
@@ -30,11 +31,17 @@ liuyao_agent/
 │   │       ├── health.py     #   GET /health
 │   │       └── divination.py
 │   ├── agent/                #   多 Agent 解卦层（依赖 LLM）
+│   ├── db/                   #   SQLAlchemy Base、Engine、Session
+│   ├── models/               #   SQLAlchemy ORM Model
+│   ├── repositories/         #   数据访问层
+│   ├── services/             #   业务服务与事务边界
 │   ├── core/                 #   纯算法层（无 LLM 依赖）
 │   ├── schema/               #   Pydantic 数据模型
 │   ├── utils/                #   通用工具
 │   ├── config/               #   全局配置（pydantic-settings）
 │   ├── running_data/         #   静态数据 + 解卦记录 JSON/MD
+│   ├── migrations/           #   Alembic 数据库迁移
+│   ├── alembic.ini
 │   ├── tests/                #   pytest 单元测试
 │   ├── main.py               #   uvicorn 启动入口（默认 127.0.0.1:8022）
 │   ├── requirements.txt
@@ -57,12 +64,17 @@ liuyao_agent/
 | `backend/api/` | 接收 HTTP 请求、参数校验、返回响应 | 否 |
 | `backend/core/` | 起卦、排盘等确定性的纯算法 | 否 |
 | `backend/schema/` | 数据模型定义 | 否 |
+| `backend/models/` | SQLAlchemy ORM 数据结构 | 否 |
+| `backend/repositories/` | 数据库读写 | 否 |
+| `backend/services/` | 业务规则与事务边界 | 否 |
+| `backend/db/` | 数据库连接与 Session | 否 |
 | `backend/utils/` | 通用工具（八字、日志、LLM 客户端） | 视具体工具 |
 | `backend/config/` | 全局配置加载 | 否 |
 | `backend/agent/` | 多 Agent 协作完成解卦解读 | **是** |
 | `backend/running_data/` | 静态数据（卦辞爻辞）+ 解卦记录 JSON/MD 落盘 | 否 |
 
-**调用方向**：`backend.api → backend.core / backend.agent → backend.schema / backend.utils / backend.running_data`，无反向依赖。
+**调用方向**：`backend.api → backend.services → backend.repositories → backend.models / backend.db`；
+起卦链路仍为 `backend.api → backend.core / backend.agent`，无反向依赖。
 
 ## 快速开始
 
@@ -75,11 +87,19 @@ pip install -r backend/requirements.txt
 ### 2. 配置环境变量
 
 ```bash
-cp backend/.env.example backend/.env
+cp backend/.env.sample backend/.env
 # 编辑 backend/.env，填入 LLM_API_KEY 等配置
 ```
 
-### 3. 启动服务（须在仓库根目录执行，使 `backend/` 可作为 Python 包导入）
+### 3. 应用数据库迁移
+
+```bash
+python -m alembic -c backend/alembic.ini upgrade head
+```
+
+SQLite 数据库默认创建在 `backend/running_data/liuyao.db`，不会提交到 Git。
+
+### 4. 启动服务（须在仓库根目录执行，使 `backend/` 可作为 Python 包导入）
 
 ```bash
 python -m backend.main
@@ -109,6 +129,9 @@ npm run dev
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
+| `POST` | `/users/guests` | 创建匿名用户 |
+| `GET` | `/users/{id}` | 查询用户 |
+| `PATCH` | `/users/{id}` | 更新用户昵称 |
 | `POST` | `/divinations` | 起卦 + 排盘，落盘 JSON；可选 `generate_markdown=true` 一步生成 Markdown |
 | `GET` | `/divinations` | 列出所有解卦 ID |
 | `GET` | `/divinations/{id}` | 按 ID 查询解卦结果 |
@@ -123,7 +146,7 @@ npm run dev
 |---|---|---|
 | `manual` | `numbers: [1..4]×6` | 手动输入爻位编码 |
 | `time` | `time: ISO datetime` | 传统时间起卦 |
-| `coin` | 无 | 模拟三枚铜钱抛掷 |
+| `coin` | `numbers: [1..4]×6` | 接收前端完成六次投掷后的爻位编码 |
 | `random` | 无 | 一键随机生成 |
 
 **爻位编码**：`1`=少阴，`2`=少阳，`3`=纯阳（动爻），`4`=纯阴（动爻）。
@@ -148,12 +171,13 @@ curl -X POST http://127.0.0.1:8022/divinations \
     "generate_markdown": true
   }'
 
-# 2) coin：模拟三枚铜钱抛掷六次（编码规则见下方"铜钱起卦编码"）
+# 2) coin：提交前端模拟三枚铜钱六次投掷后的六爻编码
 curl -X POST http://127.0.0.1:8022/divinations \
   -H 'Content-Type: application/json' \
   -d '{
     "method": "coin",
     "question": "今日运势如何？",
+    "numbers": [2, 1, 2, 2, 1, 2],
     "time": "2026-07-02T11:00:00",
     "generate_markdown": true
   }'

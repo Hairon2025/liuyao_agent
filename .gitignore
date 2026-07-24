@@ -35,6 +35,11 @@ logs/*.log
 backend/running_data/divinations_json/*.json
 backend/running_data/divinations_md/*.md
 
+# 本地 SQLite 数据库及其日志文件
+backend/running_data/*.db
+backend/running_data/*.db-shm
+backend/running_data/*.db-wal
+
 # 临时文件
 *.tmp
 *.bak
