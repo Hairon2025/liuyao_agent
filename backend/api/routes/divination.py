@@ -54,13 +54,10 @@ def _do_qigua(req: QiguaRequest) -> tuple[list[int], datetime]:
     """根据起卦方式生成卦象编码和起卦时间。"""
     dt = req.time or datetime.now()
 
-    if req.method.value == "manual":
+    if req.method.value == "manual" or req.method.value == "coin":
         if not req.numbers:
             raise HTTPException(status_code=400, detail="manual 起卦需要提供 numbers")
         return cast_by_manual(req.numbers), dt
-
-    if req.method.value == "coin":
-        return cast_by_coin(), dt
 
     if req.method.value == "time":
         return cast_by_time(dt), dt
