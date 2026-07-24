@@ -70,6 +70,10 @@ type AppView = "workspace" | "history";
 const DEFAULT_DISCLAIMER =
   "本结果仅供文化娱乐参考，不构成任何人生决策依据。";
 
+function userStorageKey(apiBase: string) {
+  return `liuyao-user-id:${apiBase.trim().replace(/\/+$/, "")}`;
+}
+
 function withInterpretation(
   response: DivinationResponse,
   detail: string,
@@ -325,9 +329,14 @@ export default function Home() {
   >(null);
   const [interpretationError, setInterpretationError] = useState("");
   const interpretationAbortRef = useRef<AbortController | null>(null);
+  const identityRequestRef = useRef<{
+    apiBase: string;
+    promise: Promise<string>;
+  } | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
     "checking",
   );
+  const [userId, setUserId] = useState<string | null>(null);
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [apiDraft, setApiDraft] = useState(DEFAULT_API_BASE);
   const [toast, setToast] = useState("");
@@ -351,6 +360,48 @@ export default function Home() {
     [],
   );
 
+  const ensureGuestIdentity = useCallback(async (base: string) => {
+    setUserId(null);
+    const normalizedBase = base.trim().replace(/\/+$/, "");
+    let request = identityRequestRef.current;
+
+    if (!request || request.apiBase !== normalizedBase) {
+      const promise = (async () => {
+        const storageKey = userStorageKey(normalizedBase);
+        const savedUserId = window.localStorage.getItem(storageKey);
+        if (savedUserId) {
+          try {
+            const existing = await liuyaoApi.getUser(
+              normalizedBase,
+              savedUserId,
+            );
+            if (existing.is_active) return existing.id;
+          } catch {
+            // 数据库更换或访客已失效时，自动创建新的访客身份。
+          }
+        }
+
+        const guest = await liuyaoApi.createGuest(normalizedBase);
+        window.localStorage.setItem(storageKey, guest.id);
+        return guest.id;
+      })();
+      request = { apiBase: normalizedBase, promise };
+      identityRequestRef.current = request;
+    }
+
+    try {
+      const resolvedUserId = await request.promise;
+      if (identityRequestRef.current === request) {
+        setUserId(resolvedUserId);
+      }
+      return resolvedUserId;
+    } finally {
+      if (identityRequestRef.current === request) {
+        identityRequestRef.current = null;
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     async function restoreApiSettings() {
@@ -361,12 +412,21 @@ export default function Home() {
       setApiBase(base);
       setApiDraft(base);
       void checkApi(base);
+      try {
+        await ensureGuestIdentity(base);
+      } catch (error) {
+        if (!cancelled) {
+          showToast(
+            error instanceof Error ? error.message : "访客身份初始化失败",
+          );
+        }
+      }
     }
     void restoreApiSettings();
     return () => {
       cancelled = true;
     };
-  }, [checkApi]);
+  }, [checkApi, ensureGuestIdentity, showToast]);
 
   useEffect(
     () => () => {
@@ -376,11 +436,17 @@ export default function Home() {
   );
 
   const loadHistory = useCallback(async () => {
+    if (!userId) {
+      showToast("访客身份正在初始化，请稍候");
+      return;
+    }
     setHistoryLoading(true);
     try {
-      const ids = await liuyaoApi.list(apiBase);
+      const ids = await liuyaoApi.list(apiBase, userId);
       const records = await Promise.all(
-        ids.slice(0, 30).map((id) => liuyaoApi.get(apiBase, id)),
+        ids
+          .slice(0, 30)
+          .map((id) => liuyaoApi.get(apiBase, userId, id)),
       );
       setHistory(records);
     } catch (error) {
@@ -388,12 +454,16 @@ export default function Home() {
     } finally {
       setHistoryLoading(false);
     }
-  }, [apiBase, showToast]);
+  }, [apiBase, showToast, userId]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!question.trim()) {
       showToast("请先写下所问事项");
+      return;
+    }
+    if (!userId) {
+      showToast("访客身份正在初始化，请稍候");
       return;
     }
     if ((method === "time" || method === "manual") && !dateTime) {
@@ -406,7 +476,7 @@ export default function Home() {
     }
     setSubmitting(true);
     try {
-      const response = await liuyaoApi.create(apiBase, {
+      const response = await liuyaoApi.create(apiBase, userId, {
         method: method === "coin" ? "manual" : method,
         question: question.trim(),
         ...(method === "manual" ? { numbers: manualNumbers } : {}),
@@ -470,6 +540,10 @@ export default function Home() {
 
   async function handleInterpret() {
     if (!result || interpreting) return;
+    if (!userId) {
+      showToast("访客身份正在初始化，请稍候");
+      return;
+    }
 
     const divinationId = result.divination_id;
     const controller = new AbortController();
@@ -482,7 +556,11 @@ export default function Home() {
 
     try {
       if (!result.markdown_content) {
-        const markdown = await liuyaoApi.generateMarkdown(apiBase, divinationId);
+        const markdown = await liuyaoApi.generateMarkdown(
+          apiBase,
+          userId,
+          divinationId,
+        );
         setResult((current) =>
           current?.divination_id === divinationId
             ? {
@@ -496,6 +574,7 @@ export default function Home() {
 
       const fullContent = await liuyaoApi.interpretStream(
         apiBase,
+        userId,
         divinationId,
         (content) => {
           if (!controller.signal.aborted) {
@@ -540,8 +619,12 @@ export default function Home() {
       window.setTimeout(() => setDeleteCandidate(null), 4000);
       return;
     }
+    if (!userId) {
+      showToast("访客身份正在初始化，请稍候");
+      return;
+    }
     try {
-      await liuyaoApi.remove(apiBase, id);
+      await liuyaoApi.remove(apiBase, userId, id);
       setHistory((items) => items.filter((item) => item.divination_id !== id));
       if (result?.divination_id === id) setResult(null);
       setDeleteCandidate(null);
@@ -593,6 +676,11 @@ export default function Home() {
     window.localStorage.setItem("liuyao-api-base", next);
     setApiBase(next);
     void checkApi(next);
+    void ensureGuestIdentity(next).catch((error) => {
+      showToast(
+        error instanceof Error ? error.message : "访客身份初始化失败",
+      );
+    });
     showToast("API 地址已保存");
   }
 

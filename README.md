@@ -39,7 +39,7 @@ liuyao_agent/
 │   ├── schema/               #   Pydantic 数据模型
 │   ├── utils/                #   通用工具
 │   ├── config/               #   全局配置（pydantic-settings）
-│   ├── running_data/         #   静态数据 + 解卦记录 JSON/MD
+│   ├── running_data/         #   静态数据 + 本地 SQLite 数据库
 │   ├── migrations/           #   Alembic 数据库迁移
 │   ├── alembic.ini
 │   ├── tests/                #   pytest 单元测试
@@ -71,7 +71,7 @@ liuyao_agent/
 | `backend/utils/` | 通用工具（八字、日志、LLM 客户端） | 视具体工具 |
 | `backend/config/` | 全局配置加载 | 否 |
 | `backend/agent/` | 多 Agent 协作完成解卦解读 | **是** |
-| `backend/running_data/` | 静态数据（卦辞爻辞）+ 解卦记录 JSON/MD 落盘 | 否 |
+| `backend/running_data/` | 静态数据（卦辞爻辞）+ 本地 SQLite 数据库 | 否 |
 
 **调用方向**：`backend.api → backend.services → backend.repositories → backend.models / backend.db`；
 起卦链路仍为 `backend.api → backend.core / backend.agent`，无反向依赖。
@@ -132,13 +132,19 @@ npm run dev
 | `POST` | `/users/guests` | 创建匿名用户 |
 | `GET` | `/users/{id}` | 查询用户 |
 | `PATCH` | `/users/{id}` | 更新用户昵称 |
-| `POST` | `/divinations` | 起卦 + 排盘，落盘 JSON；可选 `generate_markdown=true` 一步生成 Markdown |
-| `GET` | `/divinations` | 列出所有解卦 ID |
-| `GET` | `/divinations/{id}` | 按 ID 查询解卦结果 |
-| `POST` | `/divinations/{id}/markdown` | 渲染并落盘 Markdown |
-| `GET` | `/divinations/{id}/markdown` | 读取已生成的 Markdown |
-| `POST` | `/divinations/{id}/interpret` | 调用 Agent 生成解读并写回记录 |
-| `DELETE` | `/divinations/{id}` | 删除记录（JSON + MD） |
+| `POST` | `/divinations` | 起卦 + 排盘并保存数据库；可选 `generate_markdown=true` |
+| `GET` | `/divinations` | 列出当前用户的全部卦例 ID |
+| `GET` | `/divinations/{id}` | 查询当前用户的一条卦例 |
+| `POST` | `/divinations/{id}/markdown` | 渲染 Markdown 并保存数据库 |
+| `GET` | `/divinations/{id}/markdown` | 读取数据库中的 Markdown |
+| `POST` | `/divinations/{id}/interpret` | 调用 Agent 生成解读并写回数据库 |
+| `POST` | `/divinations/{id}/interpret/stream` | 通过 SSE 流式生成解读并写回数据库 |
+| `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
+
+除用户创建与查询接口外，所有 `/divinations` 请求都需要携带
+`X-User-ID: <uuid>`。这是 MVP 阶段的临时身份传输方式；前端会自动创建访客
+并在浏览器中保存 ID。它不等同于安全认证，接入登录系统后应替换为服务端
+验证的登录态。
 
 ### 起卦方式
 
@@ -229,11 +235,12 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 - [x] **阶段 0：基础架构** — FastAPI 框架 + 核心目录分层 + 数据模型
 - [x] **阶段 1：起卦 + 排盘** — `backend/core/qigua.py` + `backend/core/paipan.py`（移植自参考项目）
 - [x] **阶段 2：六十四卦数据** — 卦宫 + 卦辞爻辞全部入库
-- [x] **阶段 2.5：本地持久化** — JSON + Markdown 双格式落盘到 `backend/running_data/`
+- [x] **阶段 2.5：本地持久化** — SQLite + SQLAlchemy + Alembic
+- [x] **阶段 2.6：用户与卦例归属** — User / Divination Model、Repository、Service
 - [x] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
 - [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
 - [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
-- [ ] **阶段 6：会话与历史** — 引入持久化存储与会话管理（当前为文件存储，可平滑迁移到 DB）
+- [ ] **阶段 6：会话管理** — Chatbot 会话、上下文摘要与长期记忆
 
 ## 合规与免责声明
 

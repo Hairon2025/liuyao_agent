@@ -21,8 +21,7 @@ from typing import Any
 import pytest
 
 from backend.api.routes import divination as divination_routes
-from backend.api.routes.divination import _build_hexagram, _build_lines, _do_qigua
-from backend.running_data import divination_store
+from backend.services.divination import _build_hexagram, _build_lines, _do_qigua
 
 
 # ============================================================
@@ -186,7 +185,7 @@ class TestCreateDivination:
     def test_generate_markdown_true_populates_fields(
         self, client: Any, created_divination_ids: list[str]
     ):
-        """generate_markdown=True 时响应含 markdown_path / markdown_content。"""
+        """generate_markdown=True 时响应含 Markdown 内容。"""
         resp = client.post(
             "/divinations",
             json={
@@ -200,8 +199,7 @@ class TestCreateDivination:
         body = resp.json()
         created_divination_ids.append(body["divination_id"])
 
-        assert body["markdown_path"] is not None
-        assert body["markdown_path"].endswith(".md")
+        assert body["markdown_path"] is None
         assert body["markdown_content"] is not None
         assert "离为火" in body["markdown_content"]
 
@@ -301,10 +299,10 @@ class TestGetDivination:
 class TestDeleteDivination:
     """DELETE /divinations/{id}"""
 
-    def test_delete_existing_returns_204_and_removes_file(
+    def test_delete_existing_returns_204_and_removes_record(
         self, client: Any, created_divination_ids: list[str]
     ):
-        """删除已存在的解卦 → 204，且文件确实被移除。"""
+        """删除已存在的解卦 → 204，且数据库记录确实被移除。"""
         # 先创建
         resp = client.post(
             "/divinations",
@@ -321,8 +319,8 @@ class TestDeleteDivination:
         del_resp = client.delete(f"/divinations/{div_id}")
         assert del_resp.status_code == 204
 
-        # 文件确实被移除
-        assert divination_store.load(div_id) is None
+        # 数据库记录确实被移除
+        assert client.get(f"/divinations/{div_id}").status_code == 404
 
     def test_delete_nonexistent_returns_404(self, client: Any):
         """删除不存在的 ID → 404。"""
@@ -342,7 +340,7 @@ class TestGenerateMarkdown:
     def test_generate_markdown_returns_content(
         self, client: Any, created_divination_ids: list[str]
     ):
-        """生成 Markdown → 200，返回 content + path。"""
+        """生成 Markdown → 200，并将内容保存到数据库。"""
         resp = client.post(
             "/divinations",
             json={
@@ -358,10 +356,12 @@ class TestGenerateMarkdown:
         assert md_resp.status_code == 200
         body = md_resp.json()
         assert body["divination_id"] == div_id
-        assert body["path"].endswith(".md")
+        assert body["path"] is None
         assert "离为火" in body["content"]
-        # 落盘文件确实存在
-        assert divination_store.markdown_exists(div_id)
+        # 再次读取可证明内容已经持久化。
+        saved = client.get(f"/divinations/{div_id}/markdown")
+        assert saved.status_code == 200
+        assert saved.json()["content"] == body["content"]
 
     def test_generate_markdown_for_nonexistent_returns_404(self, client: Any):
         """对不存在的解卦生成 md → 404。"""
@@ -401,7 +401,7 @@ class TestGetMarkdown:
         body = md_resp.json()
         assert body["divination_id"] == div_id
         assert "离为火" in body["content"]
-        assert body["path"].endswith(".md")
+        assert body["path"] is None
 
     def test_get_markdown_without_generating_returns_404(
         self, client: Any, created_divination_ids: list[str]
@@ -431,8 +431,53 @@ class TestGetMarkdown:
 
 
 # ============================================================
-# 7. POST /divinations/{id}/interpret/stream — SSE 流式解读
+# 7. Agent 解读（非流式 + SSE 流式）
 # ============================================================
+
+
+class TestInterpretDivination:
+    """POST /divinations/{id}/interpret"""
+
+    def test_interpret_uses_database_markdown_and_persists_result(
+        self,
+        client: Any,
+        created_divination_ids: list[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        created = client.post(
+            "/divinations",
+            json={
+                "method": "manual",
+                "question": "非流式解读测试",
+                "numbers": [2, 1, 2, 2, 1, 2],
+                "generate_markdown": True,
+            },
+        )
+        divination_id = created.json()["divination_id"]
+        created_divination_ids.append(divination_id)
+
+        async def fake_interpret(markdown_content: str) -> str:
+            assert "离为火" in markdown_content
+            return "**数据库解读成功。**"
+
+        monkeypatch.setattr(
+            divination_routes.analyst,
+            "interpret",
+            fake_interpret,
+        )
+
+        response = client.post(f"/divinations/{divination_id}/interpret")
+
+        assert response.status_code == 200
+        assert (
+            response.json()["interpretation"]["detail"]
+            == "**数据库解读成功。**"
+        )
+        saved = client.get(f"/divinations/{divination_id}")
+        assert (
+            saved.json()["interpretation"]["detail"]
+            == "**数据库解读成功。**"
+        )
 
 
 class TestInterpretDivinationStream:
@@ -489,10 +534,12 @@ class TestInterpretDivinationStream:
             "data: [DONE]\n\n"
         )
 
-        saved = divination_store.load(divination_id)
-        assert saved is not None
-        assert saved.interpretation is not None
-        assert saved.interpretation.detail == "# 总论\n**整体平稳。**"
+        saved = client.get(f"/divinations/{divination_id}")
+        assert saved.status_code == 200
+        assert (
+            saved.json()["interpretation"]["detail"]
+            == "# 总论\n**整体平稳。**"
+        )
 
     def test_stream_failure_sends_error_without_done_or_partial_persistence(
         self,
@@ -523,14 +570,73 @@ class TestInterpretDivinationStream:
         assert "data: [ERROR]解卦失败：模型连接中断\n\n" in body
         assert "data: [DONE]\n\n" not in body
 
-        saved = divination_store.load(divination_id)
-        assert saved is not None
-        assert saved.interpretation is not None
-        assert saved.interpretation.detail is None
+        saved = client.get(f"/divinations/{divination_id}")
+        assert saved.status_code == 200
+        assert saved.json()["interpretation"]["detail"] is None
 
 
 # ============================================================
-# 8. Helper functions
+# 8. 用户归属与临时身份
+# ============================================================
+
+
+class TestDivinationOwnership:
+    """所有卦例接口必须按 X-User-ID 隔离数据。"""
+
+    def test_other_user_cannot_read_list_or_delete_record(
+        self,
+        client: Any,
+    ):
+        owner_id = client.headers["X-User-ID"]
+        created = client.post(
+            "/divinations",
+            json={
+                "method": "manual",
+                "question": "用户隔离测试",
+                "numbers": [2, 1, 2, 2, 1, 2],
+            },
+        )
+        assert created.status_code == 200
+        divination_id = created.json()["divination_id"]
+
+        other_user = client.post("/users/guests", json={}).json()
+        other_headers = {"X-User-ID": other_user["id"]}
+
+        assert client.get(
+            f"/divinations/{divination_id}",
+            headers=other_headers,
+        ).status_code == 404
+        assert divination_id not in client.get(
+            "/divinations",
+            headers=other_headers,
+        ).json()
+        assert client.delete(
+            f"/divinations/{divination_id}",
+            headers=other_headers,
+        ).status_code == 404
+
+        # 非所有者的删除没有影响原始记录。
+        owner_response = client.get(
+            f"/divinations/{divination_id}",
+            headers={"X-User-ID": owner_id},
+        )
+        assert owner_response.status_code == 200
+
+    def test_missing_or_invalid_user_header_returns_401(self, client: Any):
+        user_id = client.headers.pop("X-User-ID")
+        try:
+            assert client.get("/divinations").status_code == 401
+            invalid = client.get(
+                "/divinations",
+                headers={"X-User-ID": "not-a-uuid"},
+            )
+            assert invalid.status_code == 401
+        finally:
+            client.headers["X-User-ID"] = user_id
+
+
+# ============================================================
+# 9. Helper functions
 # ============================================================
 
 

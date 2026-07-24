@@ -66,6 +66,15 @@ export interface DivinationResponse {
 
 export interface MarkdownResponse {
   divination_id: string;
-  path: string;
+  path: string | null;
   content: string;
+}
+
+export interface UserResponse {
+  id: string;
+  user_type: "guest" | "registered";
+  display_name: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }

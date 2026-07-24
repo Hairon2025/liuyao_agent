@@ -31,10 +31,6 @@ ENV/
 # 日志
 logs/*.log
 
-# 解卦运行时数据（每个卦一个 JSON + 一个 MD）
-backend/running_data/divinations_json/*.json
-backend/running_data/divinations_md/*.md
-
 # 本地 SQLite 数据库及其日志文件
 backend/running_data/*.db
 backend/running_data/*.db-shm

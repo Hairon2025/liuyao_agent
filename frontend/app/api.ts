@@ -2,6 +2,7 @@ import type {
   DivinationResponse,
   MarkdownResponse,
   QiguaRequest,
+  UserResponse,
 } from "./types";
 
 export const DEFAULT_API_BASE =
@@ -56,6 +57,7 @@ async function request<T>(
 
 async function streamInterpretation(
   apiBase: string,
+  userId: string,
   id: string,
   onContent: (content: string) => void,
   signal?: AbortSignal,
@@ -66,7 +68,10 @@ async function streamInterpretation(
       `${normalizeBaseUrl(apiBase)}/divinations/${id}/interpret/stream`,
       {
         method: "POST",
-        headers: { Accept: "text/event-stream" },
+        headers: {
+          Accept: "text/event-stream",
+          "X-User-ID": userId,
+        },
         signal,
       },
     );
@@ -146,48 +151,70 @@ export const liuyaoApi = {
     return request<{ status: string }>(apiBase, "/health");
   },
 
-  create(apiBase: string, payload: QiguaRequest) {
+  createGuest(apiBase: string) {
+    return request<UserResponse>(apiBase, "/users/guests", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  },
+
+  getUser(apiBase: string, userId: string) {
+    return request<UserResponse>(apiBase, `/users/${userId}`);
+  },
+
+  create(apiBase: string, userId: string, payload: QiguaRequest) {
     return request<DivinationResponse>(apiBase, "/divinations", {
       method: "POST",
+      headers: { "X-User-ID": userId },
       body: JSON.stringify(payload),
     });
   },
 
-  list(apiBase: string) {
-    return request<string[]>(apiBase, "/divinations");
-  },
-
-  get(apiBase: string, id: string) {
-    return request<DivinationResponse>(apiBase, `/divinations/${id}`);
-  },
-
-  remove(apiBase: string, id: string) {
-    return request<void>(apiBase, `/divinations/${id}`, {
-      method: "DELETE",
+  list(apiBase: string, userId: string) {
+    return request<string[]>(apiBase, "/divinations", {
+      headers: { "X-User-ID": userId },
     });
   },
 
-  generateMarkdown(apiBase: string, id: string) {
+  get(apiBase: string, userId: string, id: string) {
+    return request<DivinationResponse>(apiBase, `/divinations/${id}`, {
+      headers: { "X-User-ID": userId },
+    });
+  },
+
+  remove(apiBase: string, userId: string, id: string) {
+    return request<void>(apiBase, `/divinations/${id}`, {
+      method: "DELETE",
+      headers: { "X-User-ID": userId },
+    });
+  },
+
+  generateMarkdown(apiBase: string, userId: string, id: string) {
     return request<MarkdownResponse>(
       apiBase,
       `/divinations/${id}/markdown`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "X-User-ID": userId },
+      },
     );
   },
 
-  getMarkdown(apiBase: string, id: string) {
+  getMarkdown(apiBase: string, userId: string, id: string) {
     return request<MarkdownResponse>(
       apiBase,
       `/divinations/${id}/markdown`,
+      { headers: { "X-User-ID": userId } },
     );
   },
 
   interpretStream(
     apiBase: string,
+    userId: string,
     id: string,
     onContent: (content: string) => void,
     signal?: AbortSignal,
   ) {
-    return streamInterpretation(apiBase, id, onContent, signal);
+    return streamInterpretation(apiBase, userId, id, onContent, signal);
   },
 };

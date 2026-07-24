@@ -23,10 +23,10 @@ class QiguaRequest(BaseModel):
     time: Optional[datetime] = None
     # 手动起卦
     numbers: Optional[List[int]] = None
-    # 是否在排盘同时生成 Markdown 文件
+    # 是否在排盘同时生成 Markdown
     generate_markdown: bool = Field(
         default=False,
-        description="是否同时生成格式化 Markdown 并落盘；为 true 时响应中会包含 markdown 字段",
+        description="是否同时生成格式化 Markdown 并存入数据库；为 true 时响应中会包含 markdown 字段",
     )
 
 
@@ -90,12 +90,21 @@ class DivinationResponse(BaseModel):
     divination_id: str
     paipan: PaipanResult
     interpretation: Optional[InterpretationResult] = None
-    # 当请求中 generate_markdown=true 时填充
+    # 已从文件存储迁移到数据库；字段暂时保留以兼容旧版客户端。
     markdown_path: Optional[str] = Field(
         default=None,
-        description="Markdown 文件落盘路径（仅当 generate_markdown=true 时存在）",
+        description="兼容字段，数据库存储模式下始终为 null",
     )
     markdown_content: Optional[str] = Field(
         default=None,
-        description="Markdown 内容（仅当 generate_markdown=true 时存在）",
+        description="已生成并保存到数据库的 Markdown 内容",
     )
+
+
+class MarkdownResponse(BaseModel):
+    """数据库版 Markdown 响应。"""
+
+    divination_id: str
+    # 为兼容现有前端保留；Markdown 已入库，不再返回本地文件路径。
+    path: str | None = None
+    content: str

@@ -1,8 +1,8 @@
 """pytest 共享 fixtures
 
 提供：
-- client: FastAPI TestClient 实例（按 request 级别隔离）
-- created_divination_ids: 自动收集本测试创建的 ID，teardown 时清理
+- client: 使用独立数据库和默认访客身份的 TestClient
+- created_divination_ids: 兼容现有测试的 ID 收集列表
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from backend.api.server import app
 from backend.db.base import Base
 from backend.db.session import get_db_session
 import backend.models  # noqa: F401  # 确保测试建表时已注册全部 Model
-from backend.running_data import divination_store
 
 
 @pytest.fixture
@@ -51,6 +50,10 @@ def client(tmp_path) -> TestClient:
 
     try:
         with TestClient(app) as test_client:
+            # 模拟前端首次访问：创建访客，并把临时身份放入后续请求头。
+            guest_response = test_client.post("/users/guests", json={})
+            assert guest_response.status_code == 201
+            test_client.headers["X-User-ID"] = guest_response.json()["id"]
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db_session, None)
@@ -59,18 +62,10 @@ def client(tmp_path) -> TestClient:
 
 @pytest.fixture
 def created_divination_ids():
-    """收集本测试中创建的解卦 ID，teardown 时统一删除。
+    """收集本测试中创建的卦例 ID。
 
-    使用方式：测试中拿到响应后 append 进去即可。
-        def test_x(client, created_divination_ids):
-            r = client.post("/divinations", json={...})
-            created_divination_ids.append(r.json()["divination_id"])
+    每个测试已经使用独立临时数据库，无需额外清理；保留该 fixture 可以避免
+    大量业务断言掺杂与本次存储迁移无关的改动。
     """
     ids: list[str] = []
     yield ids
-    # teardown：清理 JSON + MD 文件
-    for div_id in ids:
-        try:
-            divination_store.delete(div_id)
-        except Exception:
-            pass

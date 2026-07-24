@@ -3,11 +3,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, CheckConstraint, DateTime, String, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base
+
+if TYPE_CHECKING:
+    from backend.models.divination import Divination
 
 
 def utc_now() -> datetime:
@@ -56,4 +60,9 @@ class User(Base):
         nullable=False,
         default=utc_now,
         onupdate=utc_now,
+    )
+    divinations: Mapped[list["Divination"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

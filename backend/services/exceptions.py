@@ -6,3 +6,11 @@
 
 class UserNotFoundError(Exception):
     """目标用户不存在。"""
+
+
+class DivinationNotFoundError(Exception):
+    """当前用户下不存在目标卦例。"""
+
+
+class MarkdownNotFoundError(Exception):
+    """目标卦例尚未生成排盘 Markdown。"""

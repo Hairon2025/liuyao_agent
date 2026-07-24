@@ -26,9 +26,14 @@ liuyao_agent/
 │   │   ├── paipan.py          #     排盘主入口 arrange_hexagram
 │   │   └── qigua.py           #     起卦（4 种方式）
 │   ├── schema/                #   Pydantic 数据模型
+│   ├── models/                #   SQLAlchemy ORM Model
+│   ├── repositories/          #   数据访问层
+│   ├── services/              #   业务规则与事务边界
+│   ├── db/                    #   异步数据库连接与 Session
+│   ├── migrations/            #   Alembic 数据库迁移
 │   ├── utils/                 #   通用工具
 │   ├── config/                #   全局配置
-│   ├── running_data/          #   静态数据 + 解卦记录 JSON/MD
+│   ├── running_data/          #   静态数据 + 本地 SQLite 数据库
 │   ├── tests/                 #   pytest 单元测试
 │   ├── main.py                #   uvicorn 启动入口（默认 127.0.0.1:8022）
 │   ├── requirements.txt
@@ -54,10 +59,15 @@ liuyao_agent/
 | `backend/core/` | 起卦、排盘等确定性纯算法 | 否 |
 | `backend/agent/` | 多 Agent 协作完成解卦解读 | **是** |
 | `backend/schema/` | 数据模型 | 否 |
+| `backend/models/` | SQLAlchemy ORM 数据结构 | 否 |
+| `backend/repositories/` | 数据库读写 | 否 |
+| `backend/services/` | 业务规则与事务边界 | 否 |
+| `backend/db/` | 数据库连接与 Session | 否 |
 | `backend/utils/` | 外部依赖/纯函数工具 | 视工具而定 |
-| `backend/running_data/` | 静态数据（卦辞爻辞等）+ 解卦记录 JSON 存储 | 否 |
+| `backend/running_data/` | 静态数据（卦辞爻辞等）+ 本地 SQLite 数据库 | 否 |
 
-**调用方向**：`backend.api → backend.core / backend.agent → backend.schema / backend.utils / backend.running_data`，无反向依赖。
+**调用方向**：`backend.api → backend.services → backend.repositories → backend.models / backend.db`；
+起卦链路仍为 `backend.services → backend.core / backend.agent`，无反向依赖。
 
 ## 核心算法层（`backend/core/`）
 
@@ -93,6 +103,9 @@ liuyao_agent/
 pip install -r backend/requirements.txt
 cp backend/.env.example backend/.env
 
+# 应用数据库迁移
+python -m alembic -c backend/alembic.ini upgrade head
+
 # 启动后端
 python -m backend.main
 # 或：
@@ -123,13 +136,20 @@ npm run dev
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
-| `POST` | `/divinations` | 起卦 + 排盘（4 种起卦方式），落盘 JSON；可选 `generate_markdown=true` 一步生成 MD |
-| `GET` | `/divinations` | 列出所有解卦 ID |
-| `GET` | `/divinations/{id}` | 按 ID 查询解卦结果 |
-| `POST` | `/divinations/{id}/markdown` | 渲染并落盘 Markdown |
-| `GET` | `/divinations/{id}/markdown` | 读取已生成的 Markdown |
-| `POST` | `/divinations/{id}/interpret` | 调用 Agent 生成解读并写回记录 |
-| `DELETE` | `/divinations/{id}` | 删除记录（JSON + MD） |
+| `POST` | `/users/guests` | 创建匿名用户 |
+| `GET` | `/users/{id}` | 查询用户 |
+| `PATCH` | `/users/{id}` | 更新用户昵称 |
+| `POST` | `/divinations` | 起卦 + 排盘并保存数据库 |
+| `GET` | `/divinations` | 列出当前用户的卦例 ID |
+| `GET` | `/divinations/{id}` | 查询当前用户的一条卦例 |
+| `POST` | `/divinations/{id}/markdown` | 渲染 Markdown 并保存数据库 |
+| `GET` | `/divinations/{id}/markdown` | 读取数据库中的 Markdown |
+| `POST` | `/divinations/{id}/interpret` | 非流式生成解读并写回数据库 |
+| `POST` | `/divinations/{id}/interpret/stream` | SSE 流式生成解读并写回数据库 |
+| `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
+
+所有 `/divinations` 请求必须携带 MVP 临时身份请求头 `X-User-ID`；
+Repository 查询必须同时限定卦例 ID 和用户 ID。
 
 ## 起卦方式与爻位编码
 
@@ -137,7 +157,7 @@ npm run dev
 |---|---|---|
 | `manual` | `numbers: [1..4]×6` | 手动输入爻位编码 |
 | `time` | `time: ISO datetime` | 传统时间起卦 |
-| `coin` | 无 | 模拟三枚铜钱抛掷 |
+| `coin` | `numbers: [1..4]×6` | 接收前端六次投掷后的爻位编码 |
 | `random` | 无 | 一键随机生成 |
 
 **爻位编码**：`1` = 少阴（-- --），`2` = 少阳（-----），`3` = 纯阳（动爻 → 变少阴），`4` = 纯阴（动爻 → 变少阳）。
