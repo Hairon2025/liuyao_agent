@@ -650,7 +650,7 @@ export default function Home() {
                   <div className="coin-casting-head">
                     <div>
                       <strong>三枚铜钱 · 六次成卦</strong>
-                      <span>花为阳，字为阴；从初爻依次向上</span>
+                      <span>花为阳，字为阴；投掷从初爻向上，卦象上爻在上</span>
                     </div>
                     <small>{coinRounds.length} / 6</small>
                   </div>
@@ -687,16 +687,17 @@ export default function Home() {
                   </button>
 
                   <div className="coin-rounds" aria-label="六次投掷结果">
-                    {Array.from({ length: 6 }, (_, index) => {
-                      const round = coinRounds[index];
+                    {Array.from({ length: 6 }, (_, displayIndex) => {
+                      const dataIndex = 5 - displayIndex;
+                      const round = coinRounds[dataIndex];
                       return (
                         <div
                           className={`coin-round ${
                             round?.moving ? "moving" : ""
                           }`}
-                          key={index}
+                          key={dataIndex}
                         >
-                          <span>{POSITION_NAMES[index + 1]}</span>
+                          <span>{POSITION_NAMES[dataIndex + 1]}</span>
                           {round ? (
                             <>
                               <b>{round.symbol}</b>
