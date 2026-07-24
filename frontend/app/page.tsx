@@ -587,27 +587,50 @@ export default function Home() {
                 </div>
               </fieldset>
 
+              {(method === "time" || method === "manual") && (
+                <label className="time-setting">
+                  <span>
+                    起卦时间
+                    <small>
+                      {method === "manual"
+                        ? "指定这组手动卦象对应的起卦时间"
+                        : "请选择你要用于起卦的具体时间"}
+                    </small>
+                  </span>
+                  <input
+                    type="datetime-local"
+                    value={dateTime}
+                    onChange={(event) => setDateTime(event.target.value)}
+                    aria-label="起卦时间"
+                    required
+                  />
+                </label>
+              )}
+
               {method === "manual" && (
                 <div className="manual-casting">
                   <div className="manual-note">
-                    <span>从初爻至上爻依次录入</span>
+                    <span>上爻在上，初爻在下</span>
                     <small>3、4 为动爻</small>
                   </div>
                   <div className="manual-lines">
-                    {manualNumbers.map((number, index) => {
+                    {manualNumbers.map((_, displayIndex) => {
+                      const dataIndex =
+                        manualNumbers.length - 1 - displayIndex;
+                      const number = manualNumbers[dataIndex];
                       const option = YAO_OPTIONS[number - 1];
                       return (
-                        <label key={index}>
-                          <span>{POSITION_NAMES[index + 1]}</span>
+                        <label key={dataIndex}>
+                          <span>{POSITION_NAMES[dataIndex + 1]}</span>
                           <b>{option.symbol}</b>
                           <select
                             value={number}
                             onChange={(event) => {
                               const next = [...manualNumbers];
-                              next[index] = Number(event.target.value);
+                              next[dataIndex] = Number(event.target.value);
                               setManualNumbers(next);
                             }}
-                            aria-label={`${POSITION_NAMES[index + 1]}爻型`}
+                            aria-label={`${POSITION_NAMES[dataIndex + 1]}爻型`}
                           >
                             {YAO_OPTIONS.map((item) => (
                               <option value={item.value} key={item.value}>
@@ -703,26 +726,6 @@ export default function Home() {
                     </button>
                   )}
                 </div>
-              )}
-
-              {(method === "time" || method === "manual") && (
-                <label className="time-setting">
-                  <span>
-                    起卦时间
-                    <small>
-                      {method === "manual"
-                        ? "指定这组手动卦象对应的起卦时间"
-                        : "请选择你要用于起卦的具体时间"}
-                    </small>
-                  </span>
-                  <input
-                    type="datetime-local"
-                    value={dateTime}
-                    onChange={(event) => setDateTime(event.target.value)}
-                    aria-label="起卦时间"
-                    required
-                  />
-                </label>
               )}
 
               <button
