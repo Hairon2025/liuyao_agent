@@ -33,8 +33,8 @@ class ChatContextSummarizer:
         session_repository: ChatSessionRepository,
         message_repository: ChatMessageRepository,
         model_adapter: ChatModelAdapter,
-        trigger_messages: int = 40,
-        keep_recent: int = 12,
+        trigger_messages: int = 10,
+        keep_recent: int = 2,
     ):
         if trigger_messages < 2:
             raise ValueError("trigger_messages 必须大于等于 2")
