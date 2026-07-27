@@ -293,7 +293,7 @@ function EmptyResult() {
       <div className="cosmos-mark" aria-hidden="true">
         <span className="cosmos-ring" />
         <span className="cosmos-ring inner-ring" />
-        <span className="cosmos-yin">☯</span>
+        <span className="cosmos-yin" />
       </div>
       <p className="eyebrow">问事 · 起卦 · 明理</p>
       <h2>一念既起，六爻成象</h2>

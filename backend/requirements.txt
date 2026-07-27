@@ -9,9 +9,10 @@ python-dotenv
 sqlalchemy>=2.0
 aiosqlite>=0.20
 alembic>=1.13
+greenlet
 
 # LLM Agent
-openai>=1.40
+openai
 openai-agents
 
 # 测试

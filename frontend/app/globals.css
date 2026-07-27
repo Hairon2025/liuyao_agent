@@ -733,9 +733,23 @@ fieldset {
 }
 
 .cosmos-yin {
-  color: var(--ink);
-  font-size: 76px;
-  opacity: 0.88;
+  position: relative;
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--paper-light);
+  filter: drop-shadow(0 0 1px rgba(37, 35, 31, 0.08));
+}
+
+.cosmos-yin::before {
+  position: absolute;
+  inset: -17%;
+  content: "";
+  background: url("/assets/taiji.png") center / 100% 100% no-repeat;
+  mix-blend-mode: multiply;
+  opacity: 0.86;
+  transform: rotate(-90deg);
 }
 
 .eyebrow {
