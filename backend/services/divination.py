@@ -170,6 +170,30 @@ class DivinationService:
         rows = await self._repository.list_for_user(user_id)
         return [row.id for row in rows]
 
+    async def list_summaries(
+        self,
+        user_id: uuid.UUID,
+        *,
+        limit: int = 10,
+    ) -> list[dict[str, str]]:
+        """为 Chatbot 工具返回紧凑的历史卦例索引。"""
+        rows = await self._repository.list_for_user(
+            user_id,
+            limit=limit,
+        )
+        return [
+            {
+                "divination_id": row.id,
+                "question": row.question,
+                "qigua_time": row.qigua_time.isoformat(),
+                "method": row.method,
+                "hexagram_name": str(
+                    row.paipan.get("ben_gua", {}).get("name", "")
+                ),
+            }
+            for row in rows
+        ]
+
     async def get(
         self,
         divination_id: str,

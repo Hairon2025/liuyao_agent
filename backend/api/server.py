@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import divination, health, user
+from backend.api.routes import chat, divination, health, user
 from backend.config.settings import settings
 from backend.utils.logger import logger
 
@@ -35,3 +35,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(divination.router)
 app.include_router(user.router)
+app.include_router(chat.router)

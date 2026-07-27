@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
 
+from backend.schema.agent import ChatEvent, ChatEventType
+
 SSE_DONE = "[DONE]"
 SSE_ERROR_PREFIX = "[ERROR]"
 
@@ -22,6 +24,41 @@ def encode_sse(data: str) -> str:
     normalized = data.replace("\r\n", "\n").replace("\r", "\n")
     data_lines = "".join(f"data: {line}\n" for line in normalized.split("\n"))
     return f"{data_lines}\n"
+
+
+def encode_named_sse(event: str, data: str) -> str:
+    """编码带 event 名称的 SSE，data 仍遵守逐行前缀规则。"""
+    normalized = data.replace("\r\n", "\n").replace("\r", "\n")
+    data_lines = "".join(
+        f"data: {line}\n" for line in normalized.split("\n")
+    )
+    return f"event: {event}\n{data_lines}\n"
+
+
+async def chat_events_to_sse(
+    events: AsyncIterable[ChatEvent],
+) -> AsyncIterator[str]:
+    """把内部 ChatEvent 流编码为前端可消费的命名 SSE。"""
+    try:
+        async for event in events:
+            yield encode_named_sse(
+                event.event_type.value,
+                event.model_dump_json(),
+            )
+    except Exception:
+        error = ChatEvent(
+            event_type=ChatEventType.ERROR,
+            content="聊天服务执行失败。",
+            error_code="chat_stream_error",
+            retryable=True,
+        )
+        yield encode_named_sse(
+            error.event_type.value,
+            error.model_dump_json(),
+        )
+        return
+
+    yield encode_named_sse("done", SSE_DONE)
 
 
 async def text_stream_to_sse(

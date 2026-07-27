@@ -1,4 +1,8 @@
 import type {
+  ChatEvent,
+  ChatMessage,
+  ChatSession,
+  ChatSessionStatus,
   DivinationResponse,
   MarkdownResponse,
   QiguaRequest,
@@ -146,6 +150,101 @@ async function streamInterpretation(
   return fullContent;
 }
 
+async function streamChatEvents(
+  apiBase: string,
+  userId: string,
+  sessionId: string,
+  message: string,
+  onEvent: (event: ChatEvent) => void,
+  signal?: AbortSignal,
+) {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${normalizeBaseUrl(apiBase)}/chat/sessions/${sessionId}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "text/event-stream",
+          "Content-Type": "application/json",
+          "X-User-ID": userId,
+        },
+        body: JSON.stringify({ message }),
+        signal,
+      },
+    );
+  } catch {
+    if (signal?.aborted) throw new Error("已停止生成");
+    throw new Error("无法连接后端服务，请确认 API 已在 8022 端口启动");
+  }
+
+  if (!response.ok) throw await responseError(response);
+  if (!response.body) throw new Error("当前浏览器不支持流式读取");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let completed = false;
+
+  function consumeEvent(rawEvent: string) {
+    const normalized = rawEvent
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n");
+    const lines = normalized.split("\n");
+    const eventName =
+      lines
+        .find((line) => line.startsWith("event:"))
+        ?.slice(6)
+        .trim() || "message";
+    const data = lines
+      .filter((line) => line === "data" || line.startsWith("data:"))
+      .map((line) =>
+        line === "data" ? "" : line.slice(5).replace(/^ /, ""),
+      )
+      .join("\n");
+
+    if (eventName === "done" || data === "[DONE]") {
+      completed = true;
+      return;
+    }
+    if (!data) return;
+    try {
+      onEvent(JSON.parse(data) as ChatEvent);
+    } catch {
+      throw new Error("聊天服务返回了无法解析的事件");
+    }
+  }
+
+  function findBoundary(value: string) {
+    const match = /\r\n\r\n|\n\n|\r\r/.exec(value);
+    return match?.index === undefined
+      ? null
+      : { index: match.index, length: match[0].length };
+  }
+
+  try {
+    while (!completed) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      let boundary = findBoundary(buffer);
+      while (boundary) {
+        consumeEvent(buffer.slice(0, boundary.index));
+        buffer = buffer.slice(boundary.index + boundary.length);
+        if (completed) break;
+        boundary = findBoundary(buffer);
+      }
+      if (done) break;
+    }
+  } catch (error) {
+    if (signal?.aborted) throw new Error("已停止生成");
+    throw error instanceof Error ? error : new Error("聊天流读取失败");
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!completed) throw new Error("聊天连接意外中断，请重试");
+}
+
 export const liuyaoApi = {
   health(apiBase: string) {
     return request<{ status: string }>(apiBase, "/health");
@@ -216,5 +315,105 @@ export const liuyaoApi = {
     signal?: AbortSignal,
   ) {
     return streamInterpretation(apiBase, userId, id, onContent, signal);
+  },
+
+  createChatSession(
+    apiBase: string,
+    userId: string,
+    payload: {
+      title?: string;
+      active_divination_id?: string;
+    } = {},
+  ) {
+    return request<ChatSession>(apiBase, "/chat/sessions", {
+      method: "POST",
+      headers: { "X-User-ID": userId },
+      body: JSON.stringify(payload),
+    });
+  },
+
+  listChatSessions(
+    apiBase: string,
+    userId: string,
+    status?: ChatSessionStatus,
+  ) {
+    const query = status ? `?status=${status}` : "";
+    return request<ChatSession[]>(
+      apiBase,
+      `/chat/sessions${query}`,
+      { headers: { "X-User-ID": userId } },
+    );
+  },
+
+  getChatSession(apiBase: string, userId: string, sessionId: string) {
+    return request<ChatSession>(
+      apiBase,
+      `/chat/sessions/${sessionId}`,
+      { headers: { "X-User-ID": userId } },
+    );
+  },
+
+  updateChatSession(
+    apiBase: string,
+    userId: string,
+    sessionId: string,
+    payload: {
+      title?: string | null;
+      status?: ChatSessionStatus;
+      active_divination_id?: string | null;
+      model?: string | null;
+    },
+  ) {
+    return request<ChatSession>(
+      apiBase,
+      `/chat/sessions/${sessionId}`,
+      {
+        method: "PATCH",
+        headers: { "X-User-ID": userId },
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  removeChatSession(apiBase: string, userId: string, sessionId: string) {
+    return request<void>(
+      apiBase,
+      `/chat/sessions/${sessionId}`,
+      {
+        method: "DELETE",
+        headers: { "X-User-ID": userId },
+      },
+    );
+  },
+
+  listChatMessages(
+    apiBase: string,
+    userId: string,
+    sessionId: string,
+    limit = 100,
+  ) {
+    return request<ChatMessage[]>(
+      apiBase,
+      `/chat/sessions/${sessionId}/messages?recent=true&limit=${limit}`,
+      { headers: { "X-User-ID": userId } },
+    );
+  },
+
+  streamChatMessage(
+    apiBase: string,
+    userId: string,
+    sessionId: string,
+    message: string,
+    onEvent: (event: ChatEvent) => void,
+    signal?: AbortSignal,
+  ) {
+    return streamChatEvents(
+      apiBase,
+      userId,
+      sessionId,
+      message,
+      onEvent,
+      signal,
+    );
   },
 };

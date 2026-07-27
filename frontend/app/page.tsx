@@ -11,6 +11,10 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DEFAULT_API_BASE, liuyaoApi } from "./api";
+import {
+  ChatView,
+  type ChatLaunchRequest,
+} from "./components/chat/ChatView";
 import type {
   DivinationResponse,
   HexagramInfo,
@@ -65,7 +69,7 @@ interface CoinRound {
 }
 
 type ResultTab = "paipan" | "texts" | "interpretation";
-type AppView = "workspace" | "history";
+type AppView = "workspace" | "chat" | "history";
 
 const DEFAULT_DISCLAIMER =
   "本结果仅供文化娱乐参考，不构成任何人生决策依据。";
@@ -341,6 +345,9 @@ export default function Home() {
   const [apiDraft, setApiDraft] = useState(DEFAULT_API_BASE);
   const [toast, setToast] = useState("");
   const [deleteCandidate, setDeleteCandidate] = useState<string | null>(null);
+  const [chatLaunch, setChatLaunch] = useState<ChatLaunchRequest | null>(
+    null,
+  );
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -650,6 +657,30 @@ export default function Home() {
     void loadHistory();
   }
 
+  function openChatForDivination(record: DivinationResponse) {
+    setChatLaunch({
+      token: Date.now(),
+      divinationId: record.divination_id,
+      title: record.paipan.question,
+    });
+    setView("chat");
+  }
+
+  async function openDivinationFromChat(id: string) {
+    if (!userId) {
+      showToast("访客身份正在初始化，请稍候");
+      return;
+    }
+    try {
+      const record = await liuyaoApi.get(apiBase, userId, id);
+      setResult(record);
+      setResultTab(record.interpretation?.detail ? "interpretation" : "paipan");
+      setView("workspace");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "卦例加载失败");
+    }
+  }
+
   const interpretationContent =
     streamingInterpretation ?? result?.interpretation?.detail ?? "";
 
@@ -707,6 +738,13 @@ export default function Home() {
             onClick={() => setView("workspace")}
           >
             起卦工作台
+          </button>
+          <button
+            type="button"
+            className={view === "chat" ? "active" : ""}
+            onClick={() => setView("chat")}
+          >
+            问易
           </button>
           <button
             type="button"
@@ -961,6 +999,12 @@ export default function Home() {
                     <p>{formatDateTime(result.paipan.qigua_time)} 起卦</p>
                   </div>
                   <div className="result-actions">
+                    <button
+                      type="button"
+                      onClick={() => openChatForDivination(result)}
+                    >
+                      问易追问
+                    </button>
                     <button type="button" onClick={downloadMarkdown}>
                       ↓ 导出排盘
                     </button>
@@ -1125,6 +1169,14 @@ export default function Home() {
             )}
           </section>
         </main>
+      ) : view === "chat" ? (
+        <ChatView
+          apiBase={apiBase}
+          userId={userId}
+          launchRequest={chatLaunch}
+          onOpenDivination={(id) => void openDivinationFromChat(id)}
+          onNotify={showToast}
+        />
       ) : (
         <main className="history-page">
           <header className="history-heading">
@@ -1167,16 +1219,29 @@ export default function Home() {
                     </div>
                     <strong>查看排盘 →</strong>
                   </button>
-                  <button
-                    type="button"
-                    className={`delete-record ${
-                      deleteCandidate === record.divination_id ? "confirm" : ""
-                    }`}
-                    onClick={() => void handleDelete(record.divination_id)}
-                    aria-label={`删除卦例 ${record.divination_id}`}
-                  >
-                    {deleteCandidate === record.divination_id ? "确认删除" : "删除"}
-                  </button>
+                  <div className="history-actions">
+                    <button
+                      type="button"
+                      className="chat-record"
+                      onClick={() => openChatForDivination(record)}
+                    >
+                      追问
+                    </button>
+                    <button
+                      type="button"
+                      className={`delete-record ${
+                        deleteCandidate === record.divination_id
+                          ? "confirm"
+                          : ""
+                      }`}
+                      onClick={() => void handleDelete(record.divination_id)}
+                      aria-label={`删除卦例 ${record.divination_id}`}
+                    >
+                      {deleteCandidate === record.divination_id
+                        ? "确认"
+                        : "删除"}
+                    </button>
+                  </div>
                 </article>
               ))}
             </div>

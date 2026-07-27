@@ -78,3 +78,75 @@ export interface UserResponse {
   created_at: string;
   updated_at: string;
 }
+
+export type ChatSessionStatus = "active" | "archived";
+export type ChatMessageRole = "user" | "assistant" | "system" | "tool";
+export type ChatMessageType =
+  | "text"
+  | "tool_call"
+  | "tool_result"
+  | "summary";
+export type ChatMessageStatus =
+  | "pending"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface ChatSession {
+  id: string;
+  user_id: string;
+  title: string | null;
+  status: ChatSessionStatus;
+  active_divination_id: string | null;
+  summary: string | null;
+  summary_through_sequence: number;
+  model: string | null;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  session_id: string;
+  divination_id: string | null;
+  sequence: number;
+  role: ChatMessageRole;
+  message_type: ChatMessageType;
+  content: string | null;
+  tool_name: string | null;
+  tool_call_id: string | null;
+  payload: unknown;
+  status: ChatMessageStatus;
+  token_count: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatToolResult {
+  success: boolean;
+  model_content: string;
+  display_content: string | null;
+  data: unknown;
+  error_code: string | null;
+  retryable: boolean;
+}
+
+export type ChatEventType =
+  | "text_delta"
+  | "tool_call_started"
+  | "tool_call_completed"
+  | "tool_call_failed"
+  | "message_completed"
+  | "error";
+
+export interface ChatEvent {
+  event_type: ChatEventType;
+  content: string | null;
+  tool_call_id: string | null;
+  tool_name: string | null;
+  tool_arguments: unknown;
+  tool_result: ChatToolResult | null;
+  error_code: string | null;
+  retryable: boolean;
+}

@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o"
+    llm_timeout_seconds: float = 120.0
+
+    # Chatbot ReAct 与上下文压缩配置。
+    chat_max_steps: int = 6
+    chat_context_recent_limit: int = 50
+    chat_summary_trigger_messages: int = 40
+    chat_summary_keep_recent: int = 12
 
     # 数据库配置。默认使用 backend/running_data/liuyao.db。
     database_url: str = f"sqlite+aiosqlite:///{_DEFAULT_DATABASE_PATH.as_posix()}"

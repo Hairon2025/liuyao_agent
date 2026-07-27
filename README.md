@@ -14,8 +14,8 @@
 - **数据校验**：Pydantic v2 + pydantic-settings
 - **数据库**：SQLAlchemy 2.x + SQLite + Alembic
 - **八字排盘**：lunar_python
-- **LLM 客户端**：抽象层 (`utils/llm_client.py`)，后续可接入 OpenAI / Anthropic / 本地模型
-- **Agent 框架**：待设计（参见下方"路线图"）
+- **LLM 客户端**：模型适配接口 + OpenAI Chat Completions 兼容适配器
+- **Agent 框架**：自研最小 ReActRunner + ToolRegistry
 
 ## 目录结构
 
@@ -140,15 +140,22 @@ npm run dev
 | `POST` | `/divinations/{id}/interpret` | 调用 Agent 生成解读并写回数据库 |
 | `POST` | `/divinations/{id}/interpret/stream` | 通过 SSE 流式生成解读并写回数据库 |
 | `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
+| `POST` | `/chat/sessions` | 创建 Chatbot 会话 |
+| `GET` | `/chat/sessions` | 分页列出当前用户的会话 |
+| `GET` | `/chat/sessions/{id}` | 读取会话 |
+| `PATCH` | `/chat/sessions/{id}` | 修改标题、归档状态、模型或当前卦例 |
+| `DELETE` | `/chat/sessions/{id}` | 删除会话及其消息 |
+| `GET` | `/chat/sessions/{id}/messages` | 按消息序号游标读取历史 |
+| `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 ReAct 对话 |
 
 除用户创建与查询接口外，所有 `/divinations` 请求都需要携带
 `X-User-ID: <uuid>`。这是 MVP 阶段的临时身份传输方式；前端会自动创建访客
 并在浏览器中保存 ID。它不等同于安全认证，接入登录系统后应替换为服务端
 验证的登录态。
 
-## Chat 数据模型
+## Chatbot 后端
 
-聊天模块当前已完成数据库模型和 Repository，尚未实现 Service、Agent 和 Chat API：
+聊天模块后端已经形成完整闭环：
 
 - `chat_sessions`：保存用户归属、标题、归档状态、当前卦例和上下文压缩摘要。
 - `chat_messages`：保存文本、工具调用、工具结果、流式生成状态及会话内序号。
@@ -159,6 +166,53 @@ npm run dev
 - `ChatMessageRepository` 通过所属会话校验用户，支持序号游标分页、最近消息和
   工具调用/结果配对查询。
 - 同一会话内 `(session_id, sequence)` 唯一；预留序号和消息写入必须放在同一事务。
+- `ChatContextBuilder` 使用“旧摘要 + 摘要游标之后的已完成消息”构建模型上下文。
+- `ReActRunner` 负责模型流、工具执行和 Observation 回填，并限制最大工具步数。
+- `OpenAIChatModelAdapter` 使用 Chat Completions 协议，也可连接兼容该协议的服务。
+- 当前工具包括创建并排盘、读取当前/指定卦例、列出最近卦例；所有读取均校验用户所有权。
+- 达到消息阈值后，`ChatContextSummarizer` 会保留最近消息并压缩较旧上下文。
+- 隐藏思考过程不保存；仅持久化用户文本、可见回答、工具调用和工具结果。
+
+### Chatbot 配置
+
+```env
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=gpt-4o
+LLM_TIMEOUT_SECONDS=120
+
+CHAT_MAX_STEPS=6
+CHAT_CONTEXT_RECENT_LIMIT=50
+CHAT_SUMMARY_TRIGGER_MESSAGES=40
+CHAT_SUMMARY_KEEP_RECENT=12
+```
+
+`CHAT_SUMMARY_KEEP_RECENT` 必须小于
+`CHAT_SUMMARY_TRIGGER_MESSAGES`。模型客户端采用延迟初始化，因此未配置 API Key
+时仍可使用会话 CRUD 和历史读取接口；只有实际发送 Chatbot 消息时才需要模型凭据。
+
+### Chatbot SSE 契约
+
+`POST /chat/sessions/{id}/messages/stream` 请求体：
+
+```json
+{
+  "message": "帮我随机起一卦，看看最近的工作机会",
+  "model": null
+}
+```
+
+响应使用命名 SSE，每个 `data` 都是完整 `ChatEvent` JSON：
+
+- `text_delta`：可立即追加显示的文本增量；
+- `tool_call_started`：工具开始；
+- `tool_call_completed` / `tool_call_failed`：工具结果；
+- `message_completed`：本轮完整可见文本；
+- `error`：结构化错误；
+- `done`：流结束，data 为 `[DONE]`。
+
+所有 `/chat/sessions` 接口都需要 `X-User-ID`。会话、消息、卦例关联和工具读取
+均按该用户过滤；其他用户访问同一 ID 时统一返回 404。
 
 ### 起卦方式
 
@@ -254,7 +308,8 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 - [x] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
 - [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
 - [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
-- [ ] **阶段 6：会话管理** — 已完成 Chat 数据模型与 Repository；待实现 Service、Agent、API、上下文摘要与长期记忆
+- [x] **阶段 6：会话管理后端** — Chat Model / Repository / Service、ReAct Agent、工具、SSE API、上下文摘要
+- [ ] **阶段 6.1：Chatbot 前端** — 会话列表、消息流展示与工具状态 UI
 
 ## 合规与免责声明
 

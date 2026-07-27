@@ -44,12 +44,22 @@ class DivinationRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_for_user(self, user_id: uuid.UUID) -> Sequence[Divination]:
-        """按创建时间倒序读取用户的全部卦例。"""
-        result = await self._session.execute(
+    async def list_for_user(
+        self,
+        user_id: uuid.UUID,
+        *,
+        limit: int | None = None,
+    ) -> Sequence[Divination]:
+        """按创建时间倒序读取用户卦例，可选限制返回数量。"""
+        query = (
             select(Divination)
             .where(Divination.user_id == user_id)
             .order_by(Divination.created_at.desc(), Divination.id.desc())
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        result = await self._session.execute(
+            query
         )
         return result.scalars().all()
 
