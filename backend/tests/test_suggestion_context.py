@@ -1,5 +1,5 @@
 """追问上下文裁剪测试。"""
-from backend.agent.suggestion_context import (
+from backend.utils.suggestion_context import (
     DISCLAIMER,
     build_suggestion_context,
 )

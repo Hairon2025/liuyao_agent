@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.agent.chat_orchestrator import ChatAgentOrchestrator
 from backend.agent.runtime.context import AgentRunContext
 from backend.agent.runtime.session import AgentSessionFactory
-from backend.agent.suggestion_context import build_suggestion_context
+from backend.utils.suggestion_context import build_suggestion_context
 from backend.agent.suggested_question_agent import SuggestedQuestionAgent
 from backend.config.settings import settings
 from backend.models.chat_message import ChatMessage
