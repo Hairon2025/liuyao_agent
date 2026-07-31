@@ -30,8 +30,8 @@ if TYPE_CHECKING:
 class ChatSession(Base):
     """用户与 Chatbot 的一次连续会话。
 
-    `summary` 和 `summary_through_sequence` 是旧版自研上下文摘要的兼容字段，
-    Agents SDK 运行时不再读取它们；
+    `summary` 保存结构化长期记忆；`summary_through_agent_message_id`
+    标记已压缩到哪条 SDK Item。`summary_through_sequence` 仅兼容旧版字段；
     `active_divination_id` 只表示当前主要讨论的卦例，不限制会话关联多个卦例。
     """
 
@@ -44,6 +44,10 @@ class ChatSession(Base):
         CheckConstraint(
             "summary_through_sequence >= 0",
             name="nonnegative_summary_sequence",
+        ),
+        CheckConstraint(
+            "summary_through_agent_message_id >= 0",
+            name="nonnegative_summary_agent_message_id",
         ),
         CheckConstraint(
             "next_message_sequence > 0",
@@ -84,8 +88,18 @@ class ChatSession(Base):
         JSON,
         nullable=True,
     )
-    # 兼容旧数据库/API；模型上下文已由 agent_messages 管理。
+    # 摘要是 agent_messages 的派生缓存；完整产品历史仍由 chat_messages 保存。
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_through_agent_message_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    summary_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # 兼容旧数据库/API，不再作为 SDK 长期记忆的边界。
     summary_through_sequence: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

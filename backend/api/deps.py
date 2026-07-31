@@ -11,12 +11,15 @@ from backend.config.settings import settings
 from backend.agent.chatbot_agent import LiuYaoChatbot
 from backend.agent.chat_orchestrator import ChatAgentOrchestrator
 from backend.agent.liuyao_agent import analyst
+from backend.agent.memory.compactor import ChatMemoryCompactor
+from backend.agent.memory_summary_agent import MemorySummaryAgent
 from backend.agent.runtime.model import AgentModelFactory
 from backend.agent.runtime.session import AgentSessionFactory
 from backend.agent.suggested_question_agent import SuggestedQuestionAgent
 from backend.db.session import get_db_session
 from backend.models.user import User
 from backend.repositories.chat_message import ChatMessageRepository
+from backend.repositories.agent_memory import AgentMemoryRepository
 from backend.repositories.chat_session import ChatSessionRepository
 from backend.repositories.divination import DivinationRepository
 from backend.repositories.user import UserRepository
@@ -38,6 +41,15 @@ _suggestion_model_factory = AgentModelFactory(
 )
 _suggested_question_agent = SuggestedQuestionAgent(
     model_factory=_suggestion_model_factory,
+)
+_memory_model_factory = AgentModelFactory(
+    api_key=settings.effective_memory_llm_api_key,
+    base_url=settings.effective_memory_llm_base_url,
+    timeout_seconds=settings.effective_memory_llm_timeout_seconds,
+    default_model=settings.effective_memory_llm_model,
+)
+_memory_summary_agent = MemorySummaryAgent(
+    model_factory=_memory_model_factory,
 )
 
 
@@ -127,6 +139,17 @@ def get_chat_service(session: DbSession) -> ChatService:
     agent_session_factory = AgentSessionFactory(
         engine=sdk_engine,
         recent_limit=settings.chat_context_recent_limit,
+        memory_enabled=True,
+    )
+    memory_compactor = ChatMemoryCompactor(
+        session_repository=session_repository,
+        memory_repository=AgentMemoryRepository(session),
+        summary_agent=_memory_summary_agent,
+        session=session,
+        trigger_items=settings.memory_summary_trigger_items,
+        keep_recent_items=settings.memory_summary_keep_recent_items,
+        input_max_chars=settings.memory_summary_input_max_chars,
+        context_recent_limit=settings.chat_context_recent_limit,
     )
     coordinator = LiuYaoChatbot(
         model_factory=_agent_model_factory,
@@ -147,4 +170,5 @@ def get_chat_service(session: DbSession) -> ChatService:
         chat_divination_workflow=workflow,
         session=session,
         suggested_question_agent=_suggested_question_agent,
+        memory_compactor=memory_compactor,
     )

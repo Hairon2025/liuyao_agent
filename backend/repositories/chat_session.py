@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import Select, select, update as sql_update
@@ -110,3 +111,30 @@ class ChatSessionRepository:
         if next_sequence is None:
             return None
         return next_sequence - 1
+
+    async def update_summary_if_boundary_matches(
+        self,
+        *,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        expected_agent_message_id: int,
+        summary: str,
+        through_agent_message_id: int,
+        summary_updated_at: datetime,
+    ) -> bool:
+        """按摘要边界做乐观更新，避免同一会话被并发压缩两次。"""
+        result = await self._session.execute(
+            sql_update(ChatSession)
+            .where(
+                ChatSession.id == session_id,
+                ChatSession.user_id == user_id,
+                ChatSession.summary_through_agent_message_id
+                == expected_agent_message_id,
+            )
+            .values(
+                summary=summary,
+                summary_through_agent_message_id=through_agent_message_id,
+                summary_updated_at=summary_updated_at,
+            )
+        )
+        return result.rowcount == 1

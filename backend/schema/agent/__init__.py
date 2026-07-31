@@ -14,6 +14,7 @@ from backend.schema.agent.suggestion import (
     SuggestedQuestions,
     SuggestedQuestionsPayload,
 )
+from backend.schema.agent.memory import ConversationMemory
 
 __all__ = [
     "ChatEvent",
@@ -24,4 +25,5 @@ __all__ = [
     "ToolResult",
     "SuggestedQuestions",
     "SuggestedQuestionsPayload",
+    "ConversationMemory",
 ]

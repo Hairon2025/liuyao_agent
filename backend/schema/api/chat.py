@@ -102,6 +102,8 @@ class ChatSessionResponse(BaseModel):
     active_divination_id: str | None
     summary: str | None
     summary_through_sequence: int
+    summary_through_agent_message_id: int
+    summary_updated_at: datetime | None
     model: str | None
     created_at: datetime
     updated_at: datetime

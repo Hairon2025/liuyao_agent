@@ -3,18 +3,24 @@
 当前项目使用 OpenAI Agents SDK 的标准 `Agent + Function Tool + Session`。
 Chatbot 不使用 Sandbox、Skill、Router Agent 或 Handoff。
 
-当前由三个职责单一的 Agent 协作：
+当前由四个职责单一的 Agent 协作：
 
 - `LiuYaoChatbot`：协调对话、收集起卦信息、当前卦追问和历史查询。
 - `LiuYaoAnalyst`：卦例页面单次解读，以及 Chatbot 新卦或已有排盘的首次正式报告。
 - `SuggestedQuestionAgent`：根据最新一轮问答生成结构化 JSON 追问。
+- `MemorySummaryAgent`：把旧摘要与已完成的早期 SDK Item 合并为长期记忆。
 
 ## 一次聊天请求如何运行
 
 ```mermaid
 flowchart LR
     A["POST /chat/sessions/{id}/messages/stream"] --> B["ChatService"]
-    B --> C["SDK SQLAlchemySession"]
+    B --> X{"未压缩 Item 达到阈值？"}
+    X -->|"是"| Y["ChatMemoryCompactor"]
+    Y --> Z["MemorySummaryAgent"]
+    Z --> C["MemoryAwareSession"]
+    X -->|"否"| C
+    C --> C1["长期摘要 + 最近 SDK Items"]
     B --> D["ChatAgentOrchestrator"]
     D --> P["LiuYaoChatbot 协调 Agent"]
     P --> E{"直接回答或调用工具"}
@@ -73,28 +79,39 @@ flowchart LR
    - 只读取服务端裁剪后的最新问答，输出经 Pydantic 校验的 JSON。
    - 返回空数组或恰好三条追问；失败不影响已经完成的主回答。
 
-8. `backend/agent/suggestion_context.py`
+8. `backend/utils/suggestion_context.py`
    - 删除固定免责声明，保留用户问题、回答开头和末尾有效段落。
    - `SUGGESTION_CONTEXT_MAX_CHARS` 与
      `SUGGESTION_USER_MESSAGE_MAX_CHARS` 控制输入上限。
 
-9. `backend/services/divination.py` 与 `backend/core/`
+9. `backend/agent/memory/`
+   - `session.py` 实现 SDK `Session` 的四个方法，并在最近 Item 前注入摘要。
+   - `compactor.py` 按 Item 阈值选择旧记录，并把截断点回退到完整用户轮次；
+     只删除实际进入摘要输入预算的 `agent_messages`。摘要失败或一整轮超出预算时
+     保留全部原始记录。
+
+10. `backend/agent/memory_summary_agent.py`
+    - 使用独立 `AgentModelFactory` 生成 `ConversationMemory` JSON。
+    - `MEMORY_LLM_API_KEY`、`MEMORY_LLM_BASE_URL` 和 `MEMORY_LLM_MODEL`
+      留空时逐项回退主 LLM。
+
+11. `backend/services/divination.py` 与 `backend/core/`
    - 执行真实起卦、排盘、Markdown 生成和数据库保存。
 
-10. `backend/services/chat.py`
+12. `backend/services/chat.py`
    - 保存产品聊天消息，构造可信 `AgentRunContext`，调用编排器。
    - 主 SSE 落库后返回 `message_id`；独立接口按消息 ID 校验所有权、生成并
      缓存 `suggestions` 消息。
 
-11. `backend/agent/runtime/model.py`
+13. `backend/agent/runtime/model.py`
    - 显式创建 OpenAI-compatible 模型；主 Agent 与追问 Agent 可以使用不同
      API Key、Base URL、模型和超时时间。
 
-12. `backend/agent/runtime/session.py`
-   - 用 SDK `SQLAlchemySession` 保存模型原生上下文。
-   - `CHAT_CONTEXT_RECENT_LIMIT` 在这里限制最近读取的 Item 数。
+14. `backend/agent/runtime/session.py`
+   - 用 SDK `SQLAlchemySession` 保存模型原生上下文，再按配置包装为
+     `MemoryAwareSession`。
 
-13. `backend/agent/runtime/stream.py`
+15. `backend/agent/runtime/stream.py`
     - 把 SDK 原始事件转换为前端稳定的 `ChatEvent`。
 
 ## 模型与确定性代码的边界
@@ -108,14 +125,17 @@ flowchart LR
 
 ## 两套消息表
 
-- `agent_sessions` / `agent_messages`：SDK 使用的模型上下文。
+- `agent_sessions` / `agent_messages`：SDK 使用的原生模型上下文；被摘要覆盖的旧
+  Item 可安全删除。
 - `chat_messages`：前端使用的产品消息，包含顺序、状态、工具卡片、追问建议和卦例关联。
+- `chat_sessions.summary`：结构化长期记忆；它是派生缓存，不替代完整产品历史。
 
 ## 数据库迁移
 
 迁移 `20260728_0005` 增加 SDK Session 表和 `workflow_state`；
 迁移 `20260730_0006` 增加 `suggestions` 消息类型；
-迁移 `20260731_0007` 增加来源消息外键和一对一唯一约束：
+迁移 `20260731_0007` 增加来源消息外键和一对一唯一约束；
+迁移 `20260731_0008` 增加长期摘要的 SDK Item 边界和更新时间：
 
 ```bash
 python -m alembic -c backend/alembic.ini upgrade head
@@ -125,6 +145,8 @@ python -m alembic -c backend/alembic.ini upgrade head
 
 - `test_chatbot_agent.py`：标准 Agent、Function Tools 和 Chat Completions 兼容。
 - `test_agent_session.py`：SDK Session 持久化和窗口限制。
+- `test_chat_memory.py`：长期摘要、原始 Item 安全清理和 Session 注入。
+- `test_memory_summary_agent.py`：结构化长期记忆 JSON 校验。
 - `test_chat_divination_workflow.py`：多轮参数收集、铜钱追加、当前时间和取消流程。
 - `test_chat_service.py`：Agent 事件到产品消息的持久化。
 - `test_chat_orchestrator.py`：首次报告切换、保存与 SDK Session 回填。

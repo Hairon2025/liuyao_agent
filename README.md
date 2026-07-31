@@ -161,6 +161,11 @@ npm run dev
 - `chat_sessions`：保存用户归属、标题、归档状态、当前卦例和领域工作流草稿。
 - `chat_messages`：保存文本、工具调用、工具结果、结构化追问建议、流式生成状态及会话内序号。
 - `agent_sessions` / `agent_messages`：由 SDK `SQLAlchemySession` 保存模型上下文。
+- `MemoryAwareSession` 继续实现 SDK `Session` 协议，在最近原始 Item 前注入
+  `chat_sessions.summary` 中的结构化长期记忆。
+- `ChatMemoryCompactor` 在下一轮运行前检查未压缩 SDK Item；达到阈值时使用独立
+  摘要 Agent 合并旧摘要，写入成功后才删除已覆盖的 `agent_messages`。完整
+  `chat_messages` 始终保留。
 - 一个会话可以关联多个卦例，`active_divination_id` 只表示当前主要讨论对象。
 - 删除会话时会同时清理业务消息和 SDK 上下文；删除卦例只会把聊天中的
   卦例外键设置为 `NULL`。
@@ -185,7 +190,12 @@ npm run dev
 - `ChatDivinationWorkflow` 将未收集完整的参数保存在 `workflow_state`，完整后才调用
   确定性的 `DivinationService` 起卦排盘；它也负责逐次追加铜钱结果和区分
   “现在”与指定时间，模型不会自行计算卦象。
-- `CHAT_CONTEXT_RECENT_LIMIT` 限制 SDK 每轮读取的最近 Item 数；当前版本不做语义摘要。
+- `MEMORY_SUMMARY_TRIGGER_ITEMS` 控制触发长期摘要的未压缩 SDK Item 数；
+  `MEMORY_SUMMARY_KEEP_RECENT_ITEMS` 控制摘要后至少保留的原始 Item 数，
+  实际截断点会回退到完整用户轮次，避免拆散工具调用与结果。
+- 摘要失败不会删除原始 Item；为避免记忆缺口，该轮会临时使用全部未压缩上下文。
+- `MEMORY_SUMMARY_INPUT_MAX_CHARS` 只限制单次摘要输入；超出预算的完整轮次继续
+  保留，不会在未进入摘要时被删除。
 - 前端卦例页的单次“AI 解读”和 Chatbot 首次正式报告均复用原始
   `LiuYaoAnalyst + liuyao_analyst.txt`，但仍保留两个独立 HTTP 使用入口。
 - 从卦象页进入问易时只绑定 `active_divination_id`，不会自动消耗模型；
@@ -207,6 +217,15 @@ LLM_TIMEOUT_SECONDS=120
 CHAT_MAX_STEPS=6
 CHAT_CONTEXT_RECENT_LIMIT=50
 
+# 可选：长期记忆摘要使用独立模型；三项留空时分别回退到主 LLM
+MEMORY_LLM_API_KEY=
+MEMORY_LLM_BASE_URL=
+MEMORY_LLM_MODEL=
+MEMORY_LLM_TIMEOUT_SECONDS=30
+MEMORY_SUMMARY_TRIGGER_ITEMS=10
+MEMORY_SUMMARY_KEEP_RECENT_ITEMS=5
+MEMORY_SUMMARY_INPUT_MAX_CHARS=16000
+
 # 可选：追问建议使用独立低成本模型；留空字段回退到主 LLM
 SUGGESTION_LLM_API_KEY=
 SUGGESTION_LLM_BASE_URL=
@@ -216,10 +235,19 @@ SUGGESTION_CONTEXT_MAX_CHARS=1400
 SUGGESTION_USER_MESSAGE_MAX_CHARS=300
 ```
 
-`CHAT_MAX_STEPS` 会传给 SDK `Runner.max_turns`；
-`CHAT_CONTEXT_RECENT_LIMIT` 会传给 SDK `SQLAlchemySession`。模型客户端采用
-延迟初始化，因此未配置 API Key 时仍可使用会话 CRUD 和历史读取接口；只有实际
-发送 Chatbot 消息时才需要模型凭据。
+`CHAT_MAX_STEPS` 会传给 SDK `Runner.max_turns`。启用长期记忆后，
+`SQLAlchemySession` 仍保存 SDK 原生 Item，`MemoryAwareSession` 负责组合
+“长期摘要 + 未压缩最近 Item”。配置必须满足：
+
+```text
+MEMORY_SUMMARY_KEEP_RECENT_ITEMS
+< MEMORY_SUMMARY_TRIGGER_ITEMS
+<= CHAT_CONTEXT_RECENT_LIMIT
+```
+
+摘要模型的 `MEMORY_LLM_API_KEY`、`MEMORY_LLM_BASE_URL` 和
+`MEMORY_LLM_MODEL` 逐项留空时，分别使用对应的主 `LLM_*` 配置。模型客户端
+采用延迟初始化，因此未达到摘要阈值时不会创建摘要模型客户端。
 
 每次模型生成和工具调用后的继续生成都会占用 turn。一次普通业务工具调用通常
 至少需要“模型选择工具”和“模型根据工具结果回答”两个阶段，因此默认使用 6。

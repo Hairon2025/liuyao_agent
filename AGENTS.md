@@ -15,10 +15,11 @@ liuyao_agent/
 ├── backend/                   # Python 后端（FastAPI + Agent + core）
 │   ├── api/                   #   FastAPI 接口层
 │   ├── agent/                 #   多 Agent 解卦层（依赖 LLM）
+│   │   ├── memory/            #     Session 包装与长期记忆压缩
 │   │   ├── runtime/           #     OpenAI Agents SDK 运行时
 │   │   ├── tools/             #     SDK Function Tools
 │   │   ├── chat_orchestrator.py #   多 Agent 串行编排
-│   │   └── prompt/            #     协调 / 解读 / 追问 Agent 指令
+│   │   └── prompt/            #     协调 / 解读 / 追问 / 摘要 Agent 指令
 │   ├── core/                  #   纯算法层（无 LLM 依赖）
 │   │   ├── calendar.py / constants.py
 │   │   ├── hexagrams/         #     64 卦包：data/codec/display/__init__

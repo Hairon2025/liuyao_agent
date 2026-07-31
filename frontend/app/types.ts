@@ -101,6 +101,8 @@ export interface ChatSession {
   active_divination_id: string | null;
   summary: string | null;
   summary_through_sequence: number;
+  summary_through_agent_message_id: number;
+  summary_updated_at: string | null;
   model: string | null;
   created_at: string;
   updated_at: string;

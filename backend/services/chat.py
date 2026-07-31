@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.chat_orchestrator import ChatAgentOrchestrator
+from backend.agent.memory.compactor import ChatMemoryCompactor
 from backend.agent.runtime.context import AgentRunContext
 from backend.agent.runtime.session import AgentSessionFactory
 from backend.utils.suggestion_context import build_suggestion_context
@@ -64,6 +65,7 @@ class ChatService:
         chat_divination_workflow: ChatDivinationWorkflow,
         session: AsyncSession,
         suggested_question_agent: SuggestedQuestionAgent | None = None,
+        memory_compactor: ChatMemoryCompactor | None = None,
     ):
         self._session_repository = session_repository
         self._message_repository = message_repository
@@ -74,6 +76,7 @@ class ChatService:
         self._chat_divination_workflow = chat_divination_workflow
         self._session = session
         self._suggested_question_agent = suggested_question_agent
+        self._memory_compactor = memory_compactor
 
     async def create_session(
         self,
@@ -225,6 +228,22 @@ class ChatService:
         await self._session_repository.update(chat_session, updates)
         await self._session.commit()
 
+        memory_summary = chat_session.summary
+        if self._memory_compactor is not None:
+            try:
+                compaction = await self._memory_compactor.compact_if_needed(
+                    session_id=session_id,
+                    user_id=user_id,
+                )
+                memory_summary = compaction.summary
+            except Exception:
+                # 摘要是派生缓存；压缩失败时保留原始 SDK Items 并继续主对话。
+                await self._session.rollback()
+                logger.exception(
+                    "会话 %s 的长期记忆压缩失败，本轮使用未压缩上下文",
+                    session_id,
+                )
+
         run_context = AgentRunContext(
             user_id=user_id,
             session_id=session_id,
@@ -233,7 +252,10 @@ class ChatService:
             active_divination_id=chat_session.active_divination_id,
             workflow_state=chat_session.workflow_state,
         )
-        sdk_session = self._agent_session_factory.create(session_id)
+        sdk_session = self._agent_session_factory.create(
+            session_id,
+            memory_summary=memory_summary,
+        )
         visible_chunks: list[str] = []
         # SDK 会在后台执行 Function Tool，并先发出 tool_call_started。
         # 工具与本 Service 共享请求级 AsyncSession，因此工具完成前不能在这里
