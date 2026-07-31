@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatSession,
   ChatSessionStatus,
+  ChatSuggestionsResponse,
   DivinationResponse,
   MarkdownResponse,
   QiguaRequest,
@@ -414,6 +415,22 @@ export const liuyaoApi = {
       message,
       onEvent,
       signal,
+    );
+  },
+
+  generateChatSuggestions(
+    apiBase: string,
+    userId: string,
+    sessionId: string,
+    messageId: string,
+  ) {
+    return request<ChatSuggestionsResponse>(
+      apiBase,
+      `/chat/sessions/${sessionId}/messages/${messageId}/suggestions`,
+      {
+        method: "POST",
+        headers: { "X-User-ID": userId },
+      },
     );
   },
 };

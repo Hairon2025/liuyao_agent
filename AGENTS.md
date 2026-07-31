@@ -148,9 +148,11 @@ npm run dev
 | `POST` | `/divinations/{id}/interpret` | 非流式生成解读并写回数据库 |
 | `POST` | `/divinations/{id}/interpret/stream` | SSE 流式生成解读并写回数据库 |
 | `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
+| `POST` | `/chat/sessions/{id}/messages/stream` | SSE 执行一轮 Chatbot 对话 |
+| `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 异步生成并缓存结构化追问 |
 
-所有 `/divinations` 请求必须携带 MVP 临时身份请求头 `X-User-ID`；
-Repository 查询必须同时限定卦例 ID 和用户 ID。
+所有 `/divinations` 与 `/chat/sessions` 请求必须携带 MVP 临时身份请求头
+`X-User-ID`；Repository 查询必须同时限定资源 ID 和用户 ID。
 
 ## 起卦方式与爻位编码
 

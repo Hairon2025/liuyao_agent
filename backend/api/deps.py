@@ -13,7 +13,7 @@ from backend.agent.chat_orchestrator import ChatAgentOrchestrator
 from backend.agent.liuyao_agent import analyst
 from backend.agent.runtime.model import AgentModelFactory
 from backend.agent.runtime.session import AgentSessionFactory
-from backend.agent.suggested_question_agent import suggested_question_agent
+from backend.agent.suggested_question_agent import SuggestedQuestionAgent
 from backend.db.session import get_db_session
 from backend.models.user import User
 from backend.repositories.chat_message import ChatMessageRepository
@@ -27,6 +27,18 @@ from backend.services.user import UserService
 
 
 _agent_model_factory = AgentModelFactory()
+_suggestion_model_factory = AgentModelFactory(
+    api_key=settings.suggestion_llm_api_key or settings.llm_api_key,
+    base_url=settings.suggestion_llm_base_url or settings.llm_base_url,
+    timeout_seconds=(
+        settings.suggestion_llm_timeout_seconds
+        or settings.llm_timeout_seconds
+    ),
+    default_model=settings.suggestion_llm_model or settings.llm_model,
+)
+_suggested_question_agent = SuggestedQuestionAgent(
+    model_factory=_suggestion_model_factory,
+)
 
 
 def get_settings():
@@ -134,5 +146,5 @@ def get_chat_service(session: DbSession) -> ChatService:
         divination_service=divination_service,
         chat_divination_workflow=workflow,
         session=session,
-        suggested_question_agent=suggested_question_agent,
+        suggested_question_agent=_suggested_question_agent,
     )

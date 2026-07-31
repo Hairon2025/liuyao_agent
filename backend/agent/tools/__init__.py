@@ -5,6 +5,7 @@ from backend.agent.tools.divination import (
     get_divination,
     list_divinations,
     process_divination_request,
+    request_initial_interpretation,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "get_divination",
     "list_divinations",
     "process_divination_request",
+    "request_initial_interpretation",
 ]

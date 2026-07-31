@@ -2426,6 +2426,32 @@ fieldset {
   font-style: normal;
 }
 
+.chat-suggestions-loading {
+  width: min(650px, calc(100% - 47px));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 26px 47px;
+  color: #9a8c7c;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.chat-suggestions-loading i {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(179, 138, 79, 0.28);
+  border-top-color: var(--cinnabar);
+  border-radius: 50%;
+  animation: chat-suggestion-spin 800ms linear infinite;
+}
+
+@keyframes chat-suggestion-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-welcome,
 .chat-loading {
   min-height: 0;

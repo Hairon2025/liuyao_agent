@@ -23,6 +23,7 @@ from backend.agent.tools import (
     get_divination,
     list_divinations,
     process_divination_request,
+    request_initial_interpretation,
 )
 from backend.schema.agent import ChatEvent, ChatEventType, ChatWorkflowState
 from backend.utils.logger import logger
@@ -58,6 +59,7 @@ class LiuYaoChatbot:
             instructions=self._dynamic_instructions,
             tools=[
                 process_divination_request,
+                request_initial_interpretation,
                 cancel_divination_request,
                 get_divination,
                 list_divinations,

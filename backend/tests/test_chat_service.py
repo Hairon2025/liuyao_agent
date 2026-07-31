@@ -113,7 +113,11 @@ class BackgroundToolRuntime:
 
 
 class FakeSuggestedQuestionAgent:
+    def __init__(self):
+        self.calls = []
+
     async def generate(self, **kwargs):
+        self.calls.append(kwargs)
         assert kwargs["user_message"] == "请继续分析"
         assert kwargs["assistant_answer"] == "整体平稳。"
         return SuggestedQuestions(
@@ -162,6 +166,7 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
         )
         runtime = FakeRuntime(divination_id)
         agent_sessions = AgentSessionFactory(engine=engine, recent_limit=10)
+        suggestion_agent = FakeSuggestedQuestionAgent()
         service = ChatService(
             session_repository=session_repository,
             message_repository=message_repository,
@@ -171,7 +176,7 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
             divination_service=divination_service,
             chat_divination_workflow=workflow,
             session=session,
-            suggested_question_agent=FakeSuggestedQuestionAgent(),
+            suggested_question_agent=suggestion_agent,
         )
         created = await service.create_session(ChatSessionCreate(), user_id)
 
@@ -186,11 +191,12 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
         messages = await service.list_messages(created.id, user_id)
         updated = await service.get_session(created.id, user_id)
 
-        assert events[-1].event_type == ChatEventType.SUGGESTIONS
+        assert events[-1].event_type == ChatEventType.MESSAGE_COMPLETED
+        assert events[-1].message_id == messages[-1].id
         assert runtime.calls[0]["user_message"] == "请继续分析"
         assert runtime.calls[0]["context"].user_id == user_id
         assert str(runtime.calls[0]["session"].session_id) == str(created.id)
-        assert [message.sequence for message in messages] == [1, 2, 3, 4, 5]
+        assert [message.sequence for message in messages] == [1, 2, 3, 4]
         assert [
             (message.role, message.message_type)
             for message in messages
@@ -199,15 +205,33 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
             ("assistant", "tool_call"),
             ("tool", "tool_result"),
             ("assistant", "text"),
-            ("assistant", "suggestions"),
         ]
-        assert messages[-2].content == "整体平稳。"
+        assert messages[-1].content == "整体平稳。"
+        assert updated.active_divination_id == divination_id
+        assert updated.title == "请继续分析"
+
+        generated = await service.generate_suggestions(
+            session_id=created.id,
+            user_id=user_id,
+            assistant_message_id=messages[-1].id,
+        )
+        cached = await service.generate_suggestions(
+            session_id=created.id,
+            user_id=user_id,
+            assistant_message_id=messages[-1].id,
+        )
+        messages = await service.list_messages(created.id, user_id)
+
+        assert generated.cached is False
+        assert cached.cached is True
+        assert generated.questions == cached.questions
+        assert len(suggestion_agent.calls) == 1
+        assert [message.sequence for message in messages] == [1, 2, 3, 4, 5]
+        assert messages[-1].source_message_id == messages[-2].id
         assert messages[-1].payload["source_message_id"] == str(
             messages[-2].id
         )
         assert len(messages[-1].payload["questions"]) == 3
-        assert updated.active_divination_id == divination_id
-        assert updated.title == "请继续分析"
 
     await engine.dispose()
 

@@ -147,6 +147,7 @@ npm run dev
 | `DELETE` | `/chat/sessions/{id}` | 删除会话及其消息 |
 | `GET` | `/chat/sessions/{id}/messages` | 按消息序号游标读取历史 |
 | `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 Agents SDK 对话 |
+| `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 为已完成回答异步生成并缓存三条追问 |
 
 除用户创建与查询接口外，所有 `/divinations` 请求都需要携带
 `X-User-ID: <uuid>`。这是 MVP 阶段的临时身份传输方式；前端会自动创建访客
@@ -174,10 +175,12 @@ npm run dev
 - `ChatAgentOrchestrator` 在新卦创建后串行调用原有 `LiuYaoAnalyst`：
   报告一边通过 SSE 输出，一边保存到 `divinations.interpretation.detail`，
   同时作为聊天正文落库。
-- `SuggestedQuestionAgent` 在正文完成后独立生成 JSON 追问建议；失败只记录日志，
-  不会把已经生成的主回答判为失败。
-- Function Tools 包括合并起卦信息、取消未完成流程、读取当前/指定卦例、
-  列出最近卦例；
+- 主 SSE 只负责回答；`message_completed` 返回已落库的 `message_id`，前端随后
+  异步调用追问接口，不会让低成本追问模型阻塞主回答。
+- `SuggestedQuestionAgent` 使用服务端裁剪后的最新问答生成 JSON 追问建议；
+  同一来源消息只保存一份，重复回调直接命中缓存。失败不会把主回答判为失败。
+- Function Tools 包括合并起卦信息、请求为已有排盘生成首次正式解读、
+  取消未完成流程、读取当前/指定卦例、列出最近卦例；
   所有读取均校验用户所有权。
 - `ChatDivinationWorkflow` 将未收集完整的参数保存在 `workflow_state`，完整后才调用
   确定性的 `DivinationService` 起卦排盘；它也负责逐次追加铜钱结果和区分
@@ -185,6 +188,9 @@ npm run dev
 - `CHAT_CONTEXT_RECENT_LIMIT` 限制 SDK 每轮读取的最近 Item 数；当前版本不做语义摘要。
 - 前端卦例页的单次“AI 解读”和 Chatbot 首次正式报告均复用原始
   `LiuYaoAnalyst + liuyao_analyst.txt`，但仍保留两个独立 HTTP 使用入口。
+- 从卦象页进入问易时只绑定 `active_divination_id`，不会自动消耗模型；
+  用户明确选择“生成完整 AI 解读”后，协调 Agent 才调用
+  `request_initial_interpretation`。已有正式报告默认只读取、不覆盖。
 - 隐藏思考过程不保存；仅持久化用户文本、可见回答、工具调用和工具结果。
 
 Agent 代码的推荐阅读顺序见
@@ -200,6 +206,14 @@ LLM_TIMEOUT_SECONDS=120
 
 CHAT_MAX_STEPS=6
 CHAT_CONTEXT_RECENT_LIMIT=50
+
+# 可选：追问建议使用独立低成本模型；留空字段回退到主 LLM
+SUGGESTION_LLM_API_KEY=
+SUGGESTION_LLM_BASE_URL=
+SUGGESTION_LLM_MODEL=deepseek-v4-flash
+SUGGESTION_LLM_TIMEOUT_SECONDS=30
+SUGGESTION_CONTEXT_MAX_CHARS=1400
+SUGGESTION_USER_MESSAGE_MAX_CHARS=300
 ```
 
 `CHAT_MAX_STEPS` 会传给 SDK `Runner.max_turns`；
@@ -226,10 +240,22 @@ CHAT_CONTEXT_RECENT_LIMIT=50
 - `text_delta`：可立即追加显示的文本增量；
 - `tool_call_started`：工具开始；
 - `tool_call_completed` / `tool_call_failed`：工具结果；
-- `message_completed`：本轮完整可见文本；
-- `suggestions`：三条结构化追问及其来源消息 ID；
+- `message_completed`：本轮完整可见文本和已落库的 `message_id`；
 - `error`：结构化错误；
 - `done`：流结束，data 为 `[DONE]`。
+
+前端收到 `message_completed.message_id` 后调用
+`POST /chat/sessions/{id}/messages/{message_id}/suggestions`。接口只接收消息 ID，
+正文由后端按用户所有权读取，并保留用户问题、回答开头及末尾有效段落；
+固定免责声明会先被过滤。返回格式：
+
+```json
+{
+  "source_message_id": "uuid",
+  "questions": ["追问一", "追问二", "追问三"],
+  "cached": false
+}
+```
 
 所有 `/chat/sessions` 接口都需要 `X-User-ID`。会话、消息、卦例关联和工具读取
 均按该用户过滤；其他用户访问同一 ID 时统一返回 404。

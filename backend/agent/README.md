@@ -6,7 +6,7 @@ Chatbot 不使用 Sandbox、Skill、Router Agent 或 Handoff。
 当前由三个职责单一的 Agent 协作：
 
 - `LiuYaoChatbot`：协调对话、收集起卦信息、当前卦追问和历史查询。
-- `LiuYaoAnalyst`：卦例页面单次解读，以及 Chatbot 新卦的首次正式报告。
+- `LiuYaoAnalyst`：卦例页面单次解读，以及 Chatbot 新卦或已有排盘的首次正式报告。
 - `SuggestedQuestionAgent`：根据最新一轮问答生成结构化 JSON 追问。
 
 ## 一次聊天请求如何运行
@@ -19,6 +19,7 @@ flowchart LR
     D --> P["LiuYaoChatbot 协调 Agent"]
     P --> E{"直接回答或调用工具"}
     E -->|"起卦/补充"| F["process_divination_request"]
+    E -->|"已有排盘请求完整解读"| T["request_initial_interpretation"]
     E -->|"取消草稿"| G["cancel_divination_request"]
     E -->|"读取当前卦"| H["get_divination"]
     E -->|"读取历史"| I["list_divinations"]
@@ -27,11 +28,14 @@ flowchart LR
     J -->|"信息完整"| L["DivinationService"]
     L --> M["core 起卦与排盘"]
     P --> N["AgentStreamAdapter"]
-    N --> O["ChatEvent / SSE"]
+    N --> O["ChatEvent / 主回答 SSE"]
     L --> Q["LiuYaoAnalyst 首次报告"]
+    T --> Q
     Q --> R["保存 interpretation + 聊天正文"]
-    R --> S["SuggestedQuestionAgent"]
-    S --> O
+    R --> U["message_completed 返回消息 ID"]
+    U --> V["前端异步请求 suggestions API"]
+    V --> S["SuggestedQuestionAgent"]
+    S --> W["保存并返回结构化追问"]
 ```
 
 ## 推荐阅读顺序
@@ -53,7 +57,9 @@ flowchart LR
    - 模型只负责理解自然语言和选择工具，不负责计算卦象。
 
 5. `backend/agent/tools/divination.py`
-   - 模型可以调用的四个业务工具。
+   - 模型可以调用的五个业务工具。
+   - `request_initial_interpretation` 只校验状态并发出编排信号，不在工具内部
+     嵌套模型调用；已有报告默认不覆盖。
    - `user_id`、`session_id` 和 Service 从 `RunContextWrapper` 注入，模型不能伪造。
 
 6. `backend/services/chat_divination_workflow.py`
@@ -63,24 +69,32 @@ flowchart LR
      `DivinationService`。
 
 7. `backend/agent/suggested_question_agent.py`
-   - 只读取最新用户问题与最新助手回答，输出经 Pydantic 校验的 JSON。
-   - 返回空数组或恰好三条追问；失败不影响正文。
+   - 使用独立 `AgentModelFactory`，可连接便宜的 OpenAI-compatible 模型。
+   - 只读取服务端裁剪后的最新问答，输出经 Pydantic 校验的 JSON。
+   - 返回空数组或恰好三条追问；失败不影响已经完成的主回答。
 
-8. `backend/services/divination.py` 与 `backend/core/`
+8. `backend/agent/suggestion_context.py`
+   - 删除固定免责声明，保留用户问题、回答开头和末尾有效段落。
+   - `SUGGESTION_CONTEXT_MAX_CHARS` 与
+     `SUGGESTION_USER_MESSAGE_MAX_CHARS` 控制输入上限。
+
+9. `backend/services/divination.py` 与 `backend/core/`
    - 执行真实起卦、排盘、Markdown 生成和数据库保存。
 
-9. `backend/services/chat.py`
+10. `backend/services/chat.py`
    - 保存产品聊天消息，构造可信 `AgentRunContext`，调用编排器。
-   - 正文落库后调用追问 Agent，并把 `suggestions` 消息与 SSE 事件持久化。
+   - 主 SSE 落库后返回 `message_id`；独立接口按消息 ID 校验所有权、生成并
+     缓存 `suggestions` 消息。
 
-10. `backend/agent/runtime/model.py`
-   - 显式创建 OpenAI-compatible 模型；目前保留独立工厂，方便以后切换模型。
+11. `backend/agent/runtime/model.py`
+   - 显式创建 OpenAI-compatible 模型；主 Agent 与追问 Agent 可以使用不同
+     API Key、Base URL、模型和超时时间。
 
-11. `backend/agent/runtime/session.py`
+12. `backend/agent/runtime/session.py`
    - 用 SDK `SQLAlchemySession` 保存模型原生上下文。
    - `CHAT_CONTEXT_RECENT_LIMIT` 在这里限制最近读取的 Item 数。
 
-12. `backend/agent/runtime/stream.py`
+13. `backend/agent/runtime/stream.py`
     - 把 SDK 原始事件转换为前端稳定的 `ChatEvent`。
 
 ## 模型与确定性代码的边界
@@ -100,7 +114,8 @@ flowchart LR
 ## 数据库迁移
 
 迁移 `20260728_0005` 增加 SDK Session 表和 `workflow_state`；
-迁移 `20260730_0006` 增加 `suggestions` 消息类型：
+迁移 `20260730_0006` 增加 `suggestions` 消息类型；
+迁移 `20260731_0007` 增加来源消息外键和一对一唯一约束：
 
 ```bash
 python -m alembic -c backend/alembic.ini upgrade head
@@ -113,5 +128,6 @@ python -m alembic -c backend/alembic.ini upgrade head
 - `test_chat_divination_workflow.py`：多轮参数收集、铜钱追加、当前时间和取消流程。
 - `test_chat_service.py`：Agent 事件到产品消息的持久化。
 - `test_chat_orchestrator.py`：首次报告切换、保存与 SDK Session 回填。
+- `test_initial_interpretation_tool.py`：已有排盘、已有报告和所有权校验。
 - `test_suggested_question_agent.py`：追问 JSON 解析和约束。
 - `test_routes_chat.py`：HTTP + SSE 边界。

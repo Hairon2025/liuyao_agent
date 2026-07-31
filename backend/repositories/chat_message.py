@@ -118,6 +118,41 @@ class ChatMessageRepository:
         )
         return result.scalars().all()
 
+    async def get_suggestions_for_source(
+        self,
+        source_message_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> ChatMessage | None:
+        """读取某条回答已经生成的追问建议。"""
+        result = await self._session.execute(
+            self._owned_query(user_id).where(
+                ChatMessage.source_message_id == source_message_id,
+                ChatMessage.message_type == "suggestions",
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_user_before(
+        self,
+        *,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+        before_sequence: int,
+    ) -> ChatMessage | None:
+        """读取目标回答之前最近的一条用户文本消息。"""
+        result = await self._session.execute(
+            self._owned_query(user_id)
+            .where(
+                ChatMessage.session_id == session_id,
+                ChatMessage.sequence < before_sequence,
+                ChatMessage.role == "user",
+                ChatMessage.message_type == "text",
+            )
+            .order_by(ChatMessage.sequence.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def update(
         self,
         message: ChatMessage,

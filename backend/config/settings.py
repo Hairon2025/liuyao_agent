@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o"
     llm_timeout_seconds: float = 120.0
 
+    # 追问建议可以使用独立的低成本 OpenAI-compatible 模型。
+    # 留空时逐项回退到上面的主 LLM 配置。
+    suggestion_llm_api_key: str | None = None
+    suggestion_llm_base_url: str | None = None
+    suggestion_llm_model: str | None = None
+    suggestion_llm_timeout_seconds: float | None = None
+    suggestion_context_max_chars: int = 1400
+    suggestion_user_message_max_chars: int = 300
+
     # OpenAI Agents SDK：限制一次运行的 turn 数和读取的最近 Session Item 数。
     chat_max_steps: int = 6
     chat_context_recent_limit: int = 50

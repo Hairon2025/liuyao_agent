@@ -115,6 +115,7 @@ class ChatMessageResponse(BaseModel):
 
     id: uuid.UUID
     session_id: uuid.UUID
+    source_message_id: uuid.UUID | None
     divination_id: str | None
     sequence: int
     role: ChatMessageRole
@@ -127,6 +128,14 @@ class ChatMessageResponse(BaseModel):
     token_count: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class ChatSuggestionsResponse(BaseModel):
+    """针对一条已完成助手回答生成的结构化追问。"""
+
+    source_message_id: uuid.UUID
+    questions: list[str]
+    cached: bool
 
 
 class ChatTurnRequest(BaseModel):

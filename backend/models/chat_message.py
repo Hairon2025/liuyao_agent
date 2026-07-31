@@ -60,6 +60,10 @@ class ChatMessage(Base):
             "sequence",
             name="uq_chat_messages_session_sequence",
         ),
+        UniqueConstraint(
+            "source_message_id",
+            name="uq_chat_messages_source_message_id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -71,6 +75,11 @@ class ChatMessage(Base):
         Uuid(as_uuid=True),
         ForeignKey("chat_sessions.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    source_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("chat_messages.id", ondelete="CASCADE"),
+        nullable=True,
     )
     divination_id: Mapped[str | None] = mapped_column(
         String(32),

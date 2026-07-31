@@ -2,7 +2,7 @@
 
 执行顺序由 Python 固定控制：
 1. ChatCoordinatorAgent 理解意图并调用业务工具；
-2. 新卦创建后，LiuYaoAnalyst 生成并保存首次正式报告；
+2. 新卦创建或已有排盘明确请求首次解读后，LiuYaoAnalyst 生成并保存报告；
 3. 追问建议由 ChatService 在正文落库后调用独立 Agent 生成。
 """
 from __future__ import annotations
@@ -42,8 +42,8 @@ class ChatAgentOrchestrator:
         session: Session,
         model: str | None = None,
     ) -> AsyncIterator[ChatEvent]:
-        """运行协调 Agent；若创建新卦，则切换到正式解读 Agent。"""
-        created_divination_id: str | None = None
+        """运行协调 Agent；需要首次正式解读时切换到 LiuYaoAnalyst。"""
+        interpretation_divination_id: str | None = None
 
         async for event in self._coordinator.stream(
             user_message=user_message,
@@ -51,26 +51,29 @@ class ChatAgentOrchestrator:
             session=session,
             model=model,
         ):
-            candidate = self._created_divination_id(event)
+            candidate = self._interpretation_divination_id(event)
             if candidate is not None:
-                created_divination_id = candidate
+                interpretation_divination_id = candidate
 
-            # 新卦的首次完整回答统一交给 LiuYaoAnalyst。协调 Agent 在工具
+            # 首次完整回答统一交给 LiuYaoAnalyst。协调 Agent 在触发工具
             # 完成后的说明不展示，避免同一卦象被两个 Agent 重复解读。
-            if created_divination_id is not None and event.event_type in {
-                ChatEventType.TEXT_DELTA,
-                ChatEventType.MESSAGE_COMPLETED,
-                ChatEventType.ERROR,
-            }:
+            if (
+                interpretation_divination_id is not None
+                and event.event_type in {
+                    ChatEventType.TEXT_DELTA,
+                    ChatEventType.MESSAGE_COMPLETED,
+                    ChatEventType.ERROR,
+                }
+            ):
                 continue
             yield event
 
-        if created_divination_id is None:
+        if interpretation_divination_id is None:
             return
 
         try:
             markdown = await self._get_or_generate_markdown(
-                created_divination_id,
+                interpretation_divination_id,
                 context,
             )
             chunks: list[str] = []
@@ -89,7 +92,7 @@ class ChatAgentOrchestrator:
 
             # canonical copy：供卦例页和未来追问读取。
             await self._divination_service.save_interpretation(
-                created_divination_id,
+                interpretation_divination_id,
                 context.user_id,
                 report,
             )
@@ -104,8 +107,8 @@ class ChatAgentOrchestrator:
             )
         except Exception:
             logger.exception(
-                "新卦 %s 首次 AI 解读生成或保存失败",
-                created_divination_id,
+                "卦例 %s 首次 AI 解读生成或保存失败",
+                interpretation_divination_id,
             )
             yield ChatEvent(
                 event_type=ChatEventType.ERROR,
@@ -134,14 +137,25 @@ class ChatAgentOrchestrator:
             )
 
     @staticmethod
-    def _created_divination_id(event: ChatEvent) -> str | None:
+    def _interpretation_divination_id(event: ChatEvent) -> str | None:
         if (
             event.event_type != ChatEventType.TOOL_CALL_COMPLETED
-            or event.tool_name != "process_divination_request"
             or event.tool_result is None
             or not isinstance(event.tool_result.data, dict)
-            or event.tool_result.data.get("status") != "created"
         ):
+            return None
+        status = event.tool_result.data.get("status")
+        if (
+            event.tool_name == "process_divination_request"
+            and status == "created"
+        ):
+            pass
+        elif (
+            event.tool_name == "request_initial_interpretation"
+            and status == "ready_for_interpretation"
+        ):
+            pass
+        else:
             return None
         candidate = event.tool_result.data.get("divination_id")
         return candidate if isinstance(candidate, str) else None

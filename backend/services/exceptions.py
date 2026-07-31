@@ -26,3 +26,15 @@ class ChatSessionArchivedError(Exception):
 
 class ChatDivinationOwnershipError(Exception):
     """准备关联的卦例不存在或不属于当前用户。"""
+
+
+class ChatMessageNotFoundError(Exception):
+    """当前用户或会话下不存在目标消息。"""
+
+
+class ChatSuggestionSourceError(Exception):
+    """目标消息不能作为追问建议的来源。"""
+
+
+class ChatSuggestionGenerationError(Exception):
+    """追问建议模型调用或结果保存失败。"""

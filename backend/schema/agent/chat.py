@@ -98,6 +98,7 @@ class ChatEvent(AgentProtocolModel):
         max_length=100,
     )
     retryable: bool = False
+    message_id: uuid.UUID | None = None
     source_message_id: uuid.UUID | None = None
     questions: list[str] | None = None
 

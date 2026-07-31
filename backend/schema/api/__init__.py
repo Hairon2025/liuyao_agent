@@ -3,6 +3,7 @@ from backend.schema.api.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
     ChatSessionUpdate,
+    ChatSuggestionsResponse,
     ChatTurnRequest,
 )
 
@@ -11,5 +12,6 @@ __all__ = [
     "ChatSessionCreate",
     "ChatSessionResponse",
     "ChatSessionUpdate",
+    "ChatSuggestionsResponse",
     "ChatTurnRequest",
 ]

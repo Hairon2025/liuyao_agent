@@ -22,6 +22,7 @@ def test_chatbot_builds_one_standard_agent_with_function_tools():
     assert agent.handoffs == []
     assert [tool.name for tool in agent.tools] == [
         "process_divination_request",
+        "request_initial_interpretation",
         "cancel_divination_request",
         "get_divination",
         "list_divinations",
@@ -42,6 +43,7 @@ def test_all_chatbot_tools_convert_to_chat_completions_schema():
     assert all(item["function"]["strict"] is False for item in converted)
     assert [item["function"]["name"] for item in converted] == [
         "process_divination_request",
+        "request_initial_interpretation",
         "cancel_divination_request",
         "get_divination",
         "list_divinations",

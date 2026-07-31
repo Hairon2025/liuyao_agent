@@ -62,6 +62,7 @@ export function ChatMessageList({
   streamingComplete,
   streamingTools,
   streamingSuggestions,
+  suggestionsLoading,
   suggestionsDisabled,
   error,
   onOpenDivination,
@@ -73,6 +74,7 @@ export function ChatMessageList({
   streamingComplete: boolean;
   streamingTools: StreamingToolState[];
   streamingSuggestions: string[];
+  suggestionsLoading: boolean;
   suggestionsDisabled: boolean;
   error: string;
   onOpenDivination: (id: string) => void;
@@ -177,6 +179,13 @@ export function ChatMessageList({
             disabled={suggestionsDisabled}
             onSelect={onSelectSuggestion}
           />
+        )}
+
+        {suggestionsLoading && (
+          <div className="chat-suggestions-loading" role="status">
+            <i />
+            正在整理可继续追问的问题…
+          </div>
         )}
 
         {error && (

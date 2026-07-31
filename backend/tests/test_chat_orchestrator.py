@@ -42,6 +42,33 @@ class FakeCoordinator:
         )
 
 
+class FakeExistingDivinationCoordinator:
+    async def stream(self, **kwargs):
+        yield ChatEvent(
+            event_type=ChatEventType.TOOL_CALL_STARTED,
+            tool_call_id="interpret-1",
+            tool_name="request_initial_interpretation",
+            tool_arguments={},
+        )
+        yield ChatEvent(
+            event_type=ChatEventType.TOOL_CALL_COMPLETED,
+            tool_call_id="interpret-1",
+            tool_name="request_initial_interpretation",
+            tool_result=ToolResult(
+                success=True,
+                model_content="准备生成首次正式解读",
+                data={
+                    "status": "ready_for_interpretation",
+                    "divination_id": "d" * 32,
+                },
+            ),
+        )
+        yield ChatEvent(
+            event_type=ChatEventType.MESSAGE_COMPLETED,
+            content="协调 Agent 不应生成这份报告",
+        )
+
+
 class FakeAnalyst:
     async def interpret_stream(self, markdown):
         assert markdown == "# 真实排盘"
@@ -108,3 +135,40 @@ async def test_new_divination_uses_analyst_and_saves_canonical_report():
         {"role": "assistant", "content": "正式解读"}
     ]
 
+
+@pytest.mark.asyncio
+async def test_existing_paipan_can_request_first_formal_interpretation():
+    user_id = uuid.uuid4()
+    service = FakeDivinationService()
+    sdk_session = FakeSession()
+    orchestrator = ChatAgentOrchestrator(
+        coordinator=FakeExistingDivinationCoordinator(),  # type: ignore[arg-type]
+        analyst=FakeAnalyst(),  # type: ignore[arg-type]
+        divination_service=service,  # type: ignore[arg-type]
+    )
+    context = AgentRunContext(
+        user_id=user_id,
+        session_id=uuid.uuid4(),
+        divination_service=service,  # type: ignore[arg-type]
+        chat_divination_workflow=object(),  # type: ignore[arg-type]
+        active_divination_id="d" * 32,
+    )
+
+    events = [
+        event
+        async for event in orchestrator.stream(
+            user_message="请完整解读当前卦例",
+            context=context,
+            session=sdk_session,  # type: ignore[arg-type]
+        )
+    ]
+
+    assert [event.event_type for event in events] == [
+        ChatEventType.TOOL_CALL_STARTED,
+        ChatEventType.TOOL_CALL_COMPLETED,
+        ChatEventType.TEXT_DELTA,
+        ChatEventType.TEXT_DELTA,
+        ChatEventType.MESSAGE_COMPLETED,
+    ]
+    assert events[-1].content == "正式解读"
+    assert service.saved == [(("d" * 32), user_id, "正式解读")]

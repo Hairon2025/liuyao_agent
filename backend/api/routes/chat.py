@@ -14,13 +14,17 @@ from backend.schema.api.chat import (
     ChatSessionCreate,
     ChatSessionResponse,
     ChatSessionUpdate,
+    ChatSuggestionsResponse,
     ChatTurnRequest,
 )
 from backend.services.chat import ChatService
 from backend.services.exceptions import (
     ChatDivinationOwnershipError,
+    ChatMessageNotFoundError,
     ChatSessionArchivedError,
     ChatSessionNotFoundError,
+    ChatSuggestionGenerationError,
+    ChatSuggestionSourceError,
 )
 from backend.utils.sse import chat_events_to_sse
 
@@ -202,3 +206,39 @@ async def stream_chat_message(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.post(
+    "/{session_id}/messages/{message_id}/suggestions",
+    response_model=ChatSuggestionsResponse,
+)
+async def generate_chat_suggestions(
+    session_id: uuid.UUID,
+    message_id: uuid.UUID,
+    user: CurrentUserDep,
+    service: ChatServiceDep,
+):
+    """在主回答完成后，独立生成可点击的结构化追问。"""
+    try:
+        return await service.generate_suggestions(
+            session_id=session_id,
+            user_id=user.id,
+            assistant_message_id=message_id,
+        )
+    except ChatSessionNotFoundError:
+        raise _session_not_found(session_id) from None
+    except ChatMessageNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="目标回答不存在",
+        ) from None
+    except ChatSuggestionSourceError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="只能为已完成的助手文本回答生成追问",
+        ) from None
+    except ChatSuggestionGenerationError:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="追问建议生成失败，请稍后重试",
+        ) from None

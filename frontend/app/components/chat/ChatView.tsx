@@ -18,10 +18,16 @@ export interface ChatLaunchRequest {
   title: string;
 }
 
-const QUICK_QUESTIONS = [
+const GENERAL_QUICK_QUESTIONS = [
   "帮我随机起一卦，看看最近的工作机会",
   "我已经有一条卦例，想继续分析用神和动爻",
   "六爻中的世爻和应爻分别代表什么？",
+];
+
+const DIVINATION_QUICK_QUESTIONS = [
+  "请为当前卦例生成一份完整的 AI 解读报告",
+  "请分析当前卦例的用神与动爻",
+  "这个卦对我所问的事情有哪些关键提醒？",
 ];
 
 export function ChatView({
@@ -52,10 +58,17 @@ export function ChatView({
   const [streamingSuggestions, setStreamingSuggestions] = useState<string[]>(
     [],
   );
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
+  const suggestionRequestRef = useRef(0);
+
+  useEffect(() => {
+    currentSessionIdRef.current = current?.id || null;
+  }, [current?.id]);
 
   const loadMessages = useCallback(
     async (session: ChatSession) => {
@@ -186,6 +199,8 @@ export function ChatView({
 
   async function selectSession(session: ChatSession) {
     if (streaming) return;
+    suggestionRequestRef.current += 1;
+    currentSessionIdRef.current = session.id;
     setCurrent(session);
     setSidebarOpen(false);
     setError("");
@@ -193,6 +208,7 @@ export function ChatView({
     setStreamingComplete(false);
     setStreamingTools([]);
     setStreamingSuggestions([]);
+    setSuggestionsLoading(false);
     await loadMessages(session);
   }
 
@@ -289,11 +305,60 @@ export function ChatView({
     }
   }
 
+  async function requestSuggestions(
+    sessionId: string,
+    messageId: string,
+    requestToken: number,
+  ) {
+    if (!userId) return;
+    setSuggestionsLoading(true);
+    try {
+      const result = await liuyaoApi.generateChatSuggestions(
+        apiBase,
+        userId,
+        sessionId,
+        messageId,
+      );
+      if (
+        suggestionRequestRef.current !== requestToken ||
+        currentSessionIdRef.current !== sessionId
+      ) {
+        return;
+      }
+      setStreamingSuggestions(result.questions);
+      if (result.questions.length > 0) {
+        const rows = await liuyaoApi.listChatMessages(
+          apiBase,
+          userId,
+          sessionId,
+          160,
+        );
+        if (
+          suggestionRequestRef.current === requestToken &&
+          currentSessionIdRef.current === sessionId
+        ) {
+          setMessages(rows);
+          setStreamingSuggestions([]);
+        }
+      }
+    } catch {
+      // 追问是辅助能力；失败时保留主回答，不显示成整轮对话失败。
+    } finally {
+      if (suggestionRequestRef.current === requestToken) {
+        setSuggestionsLoading(false);
+      }
+    }
+  }
+
   async function sendMessage(message: string) {
     if (!userId || streaming) return;
     let activeSession = current;
     if (!activeSession) activeSession = await createSession();
     if (!activeSession || activeSession.status === "archived") return;
+    currentSessionIdRef.current = activeSession.id;
+    const suggestionRequestToken = suggestionRequestRef.current + 1;
+    suggestionRequestRef.current = suggestionRequestToken;
+    let completedMessageId: string | null = null;
 
     const controller = new AbortController();
     abortRef.current?.abort();
@@ -304,6 +369,7 @@ export function ChatView({
     setStreamingComplete(false);
     setStreamingTools([]);
     setStreamingSuggestions([]);
+    setSuggestionsLoading(false);
     setError("");
 
     try {
@@ -312,7 +378,15 @@ export function ChatView({
         userId,
         activeSession.id,
         message,
-        handleStreamEvent,
+        (event) => {
+          handleStreamEvent(event);
+          if (
+            event.event_type === "message_completed" &&
+            event.message_id
+          ) {
+            completedMessageId = event.message_id;
+          }
+        },
         controller.signal,
       );
     } catch (streamError) {
@@ -351,6 +425,13 @@ export function ChatView({
       setStreaming(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
+    if (completedMessageId && !controller.signal.aborted) {
+      void requestSuggestions(
+        activeSession.id,
+        completedMessageId,
+        suggestionRequestToken,
+      );
+    }
   }
 
   const isEmpty =
@@ -360,6 +441,10 @@ export function ChatView({
     !streamingContent &&
     streamingTools.length === 0 &&
     streamingSuggestions.length === 0;
+  const hasActiveDivination = Boolean(current?.active_divination_id);
+  const quickQuestions = hasActiveDivination
+    ? DIVINATION_QUICK_QUESTIONS
+    : GENERAL_QUICK_QUESTIONS;
 
   return (
     <main className="chat-page">
@@ -420,15 +505,27 @@ export function ChatView({
         {isEmpty ? (
           <section className="chat-welcome">
             <span>问</span>
-            <p className="eyebrow">一问一答 · 由浅入深</p>
-            <h2>把想问的事，慢慢说来</h2>
+            <p className="eyebrow">
+              {hasActiveDivination
+                ? "卦象已入席 · 可直接问易"
+                : "一问一答 · 由浅入深"}
+            </p>
+            <h2>
+              {hasActiveDivination
+                ? "从这份卦象，继续问下去"
+                : "把想问的事，慢慢说来"}
+            </h2>
             <p>
-              问易助手可以为你起卦排盘，也能围绕已有卦例持续分析。
+              {hasActiveDivination
+                ? "当前排盘已经带入会话。你可以生成完整解读，也可以只问某个细节。"
+                : "问易助手可以为你起卦排盘，也能围绕已有卦例持续分析。"}
               <br />
-              每一次工具调用都会显示过程，排盘数据不会凭空编造。
+              {hasActiveDivination
+                ? "只有明确请求完整报告时，系统才会调用解读 Agent。"
+                : "每一次工具调用都会显示过程，排盘数据不会凭空编造。"}
             </p>
             <div>
-              {QUICK_QUESTIONS.map((question) => (
+              {quickQuestions.map((question) => (
                 <button
                   type="button"
                   key={question}
@@ -451,6 +548,7 @@ export function ChatView({
             streamingComplete={streamingComplete}
             streamingTools={streamingTools}
             streamingSuggestions={streamingSuggestions}
+            suggestionsLoading={suggestionsLoading}
             suggestionsDisabled={streaming}
             error={error}
             onOpenDivination={onOpenDivination}

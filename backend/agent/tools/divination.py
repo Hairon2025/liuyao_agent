@@ -126,6 +126,91 @@ async def process_divination_request(
 
 
 @function_tool(strict_mode=False)
+async def request_initial_interpretation(
+    context: RunContextWrapper[AgentRunContext],
+    divination_id: str | None = None,
+) -> str:
+    """请求为已完成排盘但尚未解读的卦例生成首次正式报告。
+
+    该工具只检查卦例状态并向 Python 编排器发出明确触发信号，不在 Function
+    Tool 内嵌套调用模型。若已有正式报告，则返回原报告且不覆盖。
+
+    Args:
+        divination_id: 可选卦例 ID；未传时使用当前会话关联的卦例。
+    """
+    target_id = divination_id or context.context.active_divination_id
+    if target_id is None:
+        return _tool_output(
+            ToolResult(
+                success=False,
+                model_content="当前会话尚未关联卦例，无法生成正式解读。",
+                error_code="active_divination_missing",
+                retryable=True,
+            )
+        )
+
+    try:
+        response = await context.context.divination_service.get(
+            target_id,
+            context.context.user_id,
+        )
+    except DivinationNotFoundError:
+        return _tool_output(
+            ToolResult(
+                success=False,
+                model_content="卦例不存在或不属于当前用户。",
+                error_code="divination_not_found",
+                retryable=False,
+            )
+        )
+
+    context.context.active_divination_id = target_id
+    existing_detail = (
+        response.interpretation.detail
+        if response.interpretation is not None
+        else None
+    )
+    if existing_detail:
+        return _tool_output(
+            ToolResult(
+                success=True,
+                model_content=(
+                    "当前卦例已经存在首次正式解读，不要重新生成或覆盖。"
+                    "已保存的报告如下：\n"
+                    f"{existing_detail}"
+                ),
+                display_content="已读取现有 AI 解读",
+                data={
+                    "status": "already_interpreted",
+                    "divination_id": target_id,
+                },
+            )
+        )
+
+    if response.markdown_content is None:
+        await context.context.divination_service.generate_markdown(
+            target_id,
+            context.context.user_id,
+        )
+
+    return _tool_output(
+        ToolResult(
+            success=True,
+            model_content=(
+                f"卦例 {target_id} 已完成排盘且尚无正式解读。"
+                "首次正式报告将由 LiuYaoAnalyst 生成；"
+                "不要自行解读，也不要生成追问建议。"
+            ),
+            display_content="准备生成完整 AI 解读",
+            data={
+                "status": "ready_for_interpretation",
+                "divination_id": target_id,
+            },
+        )
+    )
+
+
+@function_tool(strict_mode=False)
 async def cancel_divination_request(
     context: RunContextWrapper[AgentRunContext],
 ) -> str:

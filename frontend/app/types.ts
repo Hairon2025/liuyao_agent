@@ -110,6 +110,7 @@ export interface ChatSession {
 export interface ChatMessage {
   id: string;
   session_id: string;
+  source_message_id: string | null;
   divination_id: string | null;
   sequence: number;
   role: ChatMessageRole;
@@ -151,6 +152,13 @@ export interface ChatEvent {
   tool_result: ChatToolResult | null;
   error_code: string | null;
   retryable: boolean;
+  message_id: string | null;
   source_message_id: string | null;
   questions: string[] | null;
+}
+
+export interface ChatSuggestionsResponse {
+  source_message_id: string;
+  questions: string[];
+  cached: boolean;
 }

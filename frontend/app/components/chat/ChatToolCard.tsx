@@ -10,7 +10,12 @@ export interface StreamingToolState {
 }
 
 const TOOL_LABELS: Record<string, { mark: string; running: string }> = {
-  create_divination: { mark: "卦", running: "正在起卦排盘" },
+  process_divination_request: { mark: "卦", running: "正在整理起卦信息" },
+  request_initial_interpretation: {
+    mark: "解",
+    running: "正在准备完整解读",
+  },
+  cancel_divination_request: { mark: "止", running: "正在取消起卦流程" },
   get_divination: { mark: "阅", running: "正在调取卦例" },
   list_divinations: { mark: "册", running: "正在翻阅历史卦例" },
 };

@@ -6,12 +6,15 @@ import uuid
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agent.chat_orchestrator import ChatAgentOrchestrator
 from backend.agent.runtime.context import AgentRunContext
 from backend.agent.runtime.session import AgentSessionFactory
+from backend.agent.suggestion_context import build_suggestion_context
 from backend.agent.suggested_question_agent import SuggestedQuestionAgent
+from backend.config.settings import settings
 from backend.models.chat_message import ChatMessage
 from backend.models.chat_session import ChatSession
 from backend.models.user import utc_now
@@ -27,11 +30,15 @@ from backend.schema.api.chat import (
     ChatMessageResponse,
     ChatSessionCreate,
     ChatSessionResponse,
+    ChatSuggestionsResponse,
 )
 from backend.services.exceptions import (
     ChatDivinationOwnershipError,
+    ChatMessageNotFoundError,
     ChatSessionArchivedError,
     ChatSessionNotFoundError,
+    ChatSuggestionGenerationError,
+    ChatSuggestionSourceError,
 )
 from backend.services.chat_divination_workflow import ChatDivinationWorkflow
 from backend.services.divination import DivinationService
@@ -233,8 +240,6 @@ class ChatService:
         # flush；先缓存开始事件，收到结果后再按调用、结果顺序持久化。
         pending_tool_calls: dict[str, ChatEvent] = {}
         terminal_event_seen = False
-        completed_assistant: ChatMessage | None = None
-        suggestions_allowed = True
         try:
             async for event in self._chatbot.stream(
                 user_message=message_text,
@@ -242,6 +247,7 @@ class ChatService:
                 session=sdk_session,
                 model=model or chat_session.model,
             ):
+                outbound_event = event
                 if event.event_type == ChatEventType.TEXT_DELTA:
                     visible_chunks.append(event.content or "")
                 elif event.event_type == ChatEventType.TOOL_CALL_STARTED:
@@ -276,13 +282,6 @@ class ChatService:
                         )
                         if isinstance(candidate, str):
                             run_context.active_divination_id = candidate
-                    if (
-                        event.tool_result is not None
-                        and isinstance(event.tool_result.data, dict)
-                        and event.tool_result.data.get("status")
-                        == "needs_input"
-                    ):
-                        suggestions_allowed = False
                 elif event.event_type == ChatEventType.MESSAGE_COMPLETED:
                     await self._persist_pending_tool_calls(
                         chat_session,
@@ -302,6 +301,10 @@ class ChatService:
                     )
                     await self._session.commit()
                     terminal_event_seen = True
+                    # 前端以已落库消息 ID 异步请求追问，不再阻塞主 SSE。
+                    outbound_event = event.model_copy(
+                        update={"message_id": completed_assistant.id}
+                    )
                 elif event.event_type == ChatEventType.ERROR:
                     await self._persist_pending_tool_calls(
                         chat_session,
@@ -317,23 +320,7 @@ class ChatService:
                     )
                     terminal_event_seen = True
 
-                yield event
-
-            if (
-                terminal_event_seen
-                and completed_assistant is not None
-                and suggestions_allowed
-                and run_context.active_divination_id is not None
-            ):
-                suggestion_event = await self._generate_suggestions(
-                    chat_session=chat_session,
-                    user_id=user_id,
-                    user_message=message_text,
-                    assistant_message=completed_assistant,
-                    divination_id=run_context.active_divination_id,
-                )
-                if suggestion_event is not None:
-                    yield suggestion_event
+                yield outbound_event
         except asyncio.CancelledError:
             if not terminal_event_seen:
                 await self._persist_failed_assistant(
@@ -348,33 +335,76 @@ class ChatService:
             logger.exception("Chatbot 流式执行或消息持久化失败")
             raise
 
-    async def _generate_suggestions(
+    async def generate_suggestions(
         self,
         *,
-        chat_session: ChatSession,
+        session_id: uuid.UUID,
         user_id: uuid.UUID,
-        user_message: str,
-        assistant_message: ChatMessage,
-        divination_id: str,
-    ) -> ChatEvent | None:
-        """生成辅助追问；失败只记日志，不影响已经完成的主回答。"""
+        assistant_message_id: uuid.UUID,
+    ) -> ChatSuggestionsResponse:
+        """为一条已完成回答生成追问；结果按来源消息一对一缓存。"""
+        chat_session = await self._get_session_model(session_id, user_id)
+        assistant_message = await self._message_repository.get_for_user(
+            assistant_message_id,
+            user_id,
+        )
         if (
-            self._suggested_question_agent is None
+            assistant_message is None
+            or assistant_message.session_id != session_id
+        ):
+            raise ChatMessageNotFoundError(str(assistant_message_id))
+        if (
+            assistant_message.role != "assistant"
+            or assistant_message.message_type != "text"
+            or assistant_message.status != "completed"
             or not assistant_message.content
         ):
-            return None
-        # rollback 会让 ORM 实例过期。提前保存纯值，异常日志中不要再次触发
-        # chat_session 属性的懒加载，否则异步环境会额外抛出 MissingGreenlet。
-        chat_session_id = chat_session.id
+            raise ChatSuggestionSourceError(str(assistant_message_id))
+
+        cached = await self._message_repository.get_suggestions_for_source(
+            assistant_message_id,
+            user_id,
+        )
+        if cached is not None:
+            payload = SuggestedQuestionsPayload.model_validate(cached.payload)
+            return ChatSuggestionsResponse(
+                source_message_id=assistant_message_id,
+                questions=payload.questions,
+                cached=True,
+            )
+
+        # 没有关联卦例时不调用模型，避免普通寒暄和信息收集阶段浪费 Token。
+        if assistant_message.divination_id is None:
+            return ChatSuggestionsResponse(
+                source_message_id=assistant_message_id,
+                questions=[],
+                cached=False,
+            )
+        if self._suggested_question_agent is None:
+            raise ChatSuggestionGenerationError("追问 Agent 未配置")
+
+        user_message = await self._message_repository.get_latest_user_before(
+            session_id=session_id,
+            user_id=user_id,
+            before_sequence=assistant_message.sequence,
+        )
+        compact_user, compact_answer = build_suggestion_context(
+            user_message=user_message.content if user_message else "",
+            assistant_answer=assistant_message.content,
+            answer_max_chars=settings.suggestion_context_max_chars,
+            user_max_chars=settings.suggestion_user_message_max_chars,
+        )
+        # LLM 调用期间不需要持有查询事务；同时保存所有后续操作所需纯值，
+        # 避免 rollback 后访问过期 ORM 属性。
+        divination_id = assistant_message.divination_id
+        await self._session.commit()
         try:
             generated = await self._suggested_question_agent.generate(
-                user_message=user_message,
-                assistant_answer=assistant_message.content,
+                user_message=compact_user,
+                assistant_answer=compact_answer,
             )
-            if not generated.questions:
-                return None
             payload = SuggestedQuestionsPayload(
-                source_message_id=assistant_message.id,
+                source_message_id=assistant_message_id,
                 questions=generated.questions,
             )
             await self._append_message(
@@ -383,21 +413,49 @@ class ChatService:
                 role="assistant",
                 message_type="suggestions",
                 payload=payload.model_dump(mode="json"),
+                source_message_id=assistant_message_id,
                 divination_id=divination_id,
             )
             await self._session.commit()
-            return ChatEvent(
-                event_type=ChatEventType.SUGGESTIONS,
-                source_message_id=assistant_message.id,
+            return ChatSuggestionsResponse(
+                source_message_id=assistant_message_id,
                 questions=generated.questions,
+                cached=False,
             )
+        except IntegrityError:
+            # 两个回调并发时唯一约束只允许一个成功，失败方读取胜出结果。
+            await self._session.rollback()
+            cached = (
+                await self._message_repository.get_suggestions_for_source(
+                    assistant_message_id,
+                    user_id,
+                )
+            )
+            if cached is not None:
+                payload = SuggestedQuestionsPayload.model_validate(
+                    cached.payload
+                )
+                return ChatSuggestionsResponse(
+                    source_message_id=assistant_message_id,
+                    questions=payload.questions,
+                    cached=True,
+                )
+            logger.exception(
+                "会话 %s 的追问建议违反数据库约束",
+                session_id,
+            )
+            raise ChatSuggestionGenerationError(
+                "追问建议保存失败"
+            ) from None
         except Exception:
             await self._session.rollback()
             logger.exception(
                 "会话 %s 的追问建议生成或保存失败",
-                chat_session_id,
+                session_id,
             )
-            return None
+            raise ChatSuggestionGenerationError(
+                "追问建议生成失败"
+            ) from None
 
     async def _persist_pending_tool_calls(
         self,
@@ -517,6 +575,7 @@ class ChatService:
         payload: Any = None,
         status: str = "completed",
         divination_id: str | None = None,
+        source_message_id: uuid.UUID | None = None,
     ) -> ChatMessage:
         sequence = (
             await self._session_repository.reserve_next_message_sequence(
@@ -528,6 +587,7 @@ class ChatService:
             raise ChatSessionNotFoundError(str(chat_session.id))
         message = ChatMessage(
             session_id=chat_session.id,
+            source_message_id=source_message_id,
             divination_id=divination_id,
             sequence=sequence,
             role=role,

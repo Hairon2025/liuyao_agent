@@ -15,6 +15,7 @@ from backend.schema.agent import ChatEvent, ChatEventType, ToolResult
 
 _VISIBLE_TOOLS = {
     "process_divination_request",
+    "request_initial_interpretation",
     "cancel_divination_request",
     "get_divination",
     "list_divinations",

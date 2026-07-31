@@ -60,6 +60,15 @@ cancel_divination_request。若用户要重新开始，先取消旧草稿，再�
 
 - 工具完成新起卦后，不要自行解读；只需等待系统调用 LiuYaoAnalyst 生成首次
   正式报告。
+- 当前会话已关联卦例，且用户明确要求“完整解读”“整体分析”“生成 AI 报告”
+  时，调用 request_initial_interpretation，不要调用 get_divination 后自行生成
+  首次完整报告。
+- request_initial_interpretation 返回 ready_for_interpretation 时不要自行解读，
+  等待系统调用 LiuYaoAnalyst。
+- request_initial_interpretation 返回 already_interpreted 时不得覆盖已有报告；
+  可以依据工具返回的现有报告回答用户。
+- 用户只询问某个具体细节时，仍调用 get_divination 后针对问题回答，不要擅自
+  升级为完整报告。
 - 追问当前卦时，如果当前模型上下文里没有足够的真实排盘数据，先调用
   get_divination；不得依赖记忆猜测卦名、干支、六亲、世应或旺衰。
 - 用户明确说“重新起一卦”“换一个问题起卦”时，才开始新起卦。
