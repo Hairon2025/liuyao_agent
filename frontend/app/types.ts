@@ -85,7 +85,8 @@ export type ChatMessageType =
   | "text"
   | "tool_call"
   | "tool_result"
-  | "summary";
+  | "summary"
+  | "suggestions";
 export type ChatMessageStatus =
   | "pending"
   | "completed"
@@ -138,6 +139,7 @@ export type ChatEventType =
   | "tool_call_completed"
   | "tool_call_failed"
   | "message_completed"
+  | "suggestions"
   | "error";
 
 export interface ChatEvent {
@@ -149,4 +151,6 @@ export interface ChatEvent {
   tool_result: ChatToolResult | null;
   error_code: string | null;
   retryable: boolean;
+  source_message_id: string | null;
+  questions: string[] | null;
 }

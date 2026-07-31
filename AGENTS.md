@@ -15,9 +15,10 @@ liuyao_agent/
 ├── backend/                   # Python 后端（FastAPI + Agent + core）
 │   ├── api/                   #   FastAPI 接口层
 │   ├── agent/                 #   多 Agent 解卦层（依赖 LLM）
-│   │   ├── base_agent.py
-│   │   ├── liuyao_agent.py
-│   │   └── prompt/liuyao_analyst.txt
+│   │   ├── runtime/           #     OpenAI Agents SDK 运行时
+│   │   ├── tools/             #     SDK Function Tools
+│   │   ├── chat_orchestrator.py #   多 Agent 串行编排
+│   │   └── prompt/            #     协调 / 解读 / 追问 Agent 指令
 │   ├── core/                  #   纯算法层（无 LLM 依赖）
 │   │   ├── calendar.py / constants.py
 │   │   ├── hexagrams/         #     64 卦包：data/codec/display/__init__
@@ -37,7 +38,7 @@ liuyao_agent/
 │   ├── tests/                 #   pytest 单元测试
 │   ├── main.py                #   uvicorn 启动入口（默认 127.0.0.1:8022）
 │   ├── requirements.txt
-│   └── .env.example
+│   └── .env.sample
 │
 ├── frontend/                  # Next.js 前端（默认连 http://127.0.0.1:8022）
 │
@@ -101,7 +102,7 @@ liuyao_agent/
 ```bash
 # 安装依赖
 pip install -r backend/requirements.txt
-cp backend/.env.example backend/.env
+cp backend/.env.sample backend/.env
 
 # 应用数据库迁移
 python -m alembic -c backend/alembic.ini upgrade head
@@ -112,10 +113,10 @@ python -m backend.main
 uvicorn backend.api.server:app --reload --host 0.0.0.0 --port 8022
 
 # 跑测试
-pytest backend/tests
-pytest backend/tests/test_xunkong.py
-pytest backend/tests/test_routes_divination.py -k coin
-pytest backend/tests -x --tb=short
+python -m pytest backend/tests
+python -m pytest backend/tests/test_xunkong.py
+python -m pytest backend/tests/test_routes_divination.py -k coin
+python -m pytest backend/tests -x --tb=short
 ```
 
 > 监听端口以 `backend/main.py` 为准（当前 8022）；Swagger 文档在 `http://127.0.0.1:<port>/docs`。
@@ -166,6 +167,9 @@ Repository 查询必须同时限定卦例 ID 和用户 ID。
 
 - **api 层不写业务逻辑**，仅做参数校验和响应组装
 - **core 层无 LLM 依赖**，保证起卦排盘结果可单元测试、可复现
+- **Agent 层使用 OpenAI Agents SDK**；模型上下文交给 SDK Session，不再手工拼接
+- **当前不使用 Skill / Sandbox / Handoff**；起卦排盘必须通过 Function Tool → Service → core
+- **多 Agent 由 Python 串行编排**；首次报告与结构化追问不得交给协调 Agent 重复生成
 - **Agent 输出必须结构化**（JSON 或 Markdown），便于聚合与展示
 - 所有解卦解读输出必须附带免责声明：`本结果仅供文化娱乐参考，不构成任何人生决策依据`
 - 修改跨包 import 时注意保留 `backend.` 前缀（仓库根目录才是 Python 解析 `backend` 包的正确 cwd）

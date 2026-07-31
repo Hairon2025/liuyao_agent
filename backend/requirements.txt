@@ -12,8 +12,9 @@ alembic>=1.13
 greenlet
 
 # LLM Agent
-openai
-openai-agents
+# 这两个版本已一起验证；避免 Usage Schema 变化导致 cache_write_tokens 校验失败。
+openai==2.44.0
+openai-agents==0.17.7
 
 # 测试
 pytest>=7.0

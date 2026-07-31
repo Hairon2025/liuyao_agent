@@ -20,11 +20,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o"
     llm_timeout_seconds: float = 120.0
 
-    # Chatbot ReAct 与上下文压缩配置。
+    # OpenAI Agents SDK：限制一次运行的 turn 数和读取的最近 Session Item 数。
     chat_max_steps: int = 6
     chat_context_recent_limit: int = 50
-    chat_summary_trigger_messages: int = 40
-    chat_summary_keep_recent: int = 12
 
     # 数据库配置。默认使用 backend/running_data/liuyao.db。
     database_url: str = f"sqlite+aiosqlite:///{_DEFAULT_DATABASE_PATH.as_posix()}"

@@ -45,9 +45,13 @@ export function ChatView({
   const [streaming, setStreaming] = useState(false);
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingComplete, setStreamingComplete] = useState(false);
   const [streamingTools, setStreamingTools] = useState<
     StreamingToolState[]
   >([]);
+  const [streamingSuggestions, setStreamingSuggestions] = useState<string[]>(
+    [],
+  );
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -186,7 +190,9 @@ export function ChatView({
     setSidebarOpen(false);
     setError("");
     setStreamingContent("");
+    setStreamingComplete(false);
     setStreamingTools([]);
+    setStreamingSuggestions([]);
     await loadMessages(session);
   }
 
@@ -271,6 +277,11 @@ export function ChatView({
     }
     if (event.event_type === "message_completed" && event.content) {
       setStreamingContent(event.content);
+      setStreamingComplete(true);
+      return;
+    }
+    if (event.event_type === "suggestions" && event.questions) {
+      setStreamingSuggestions(event.questions);
       return;
     }
     if (event.event_type === "error") {
@@ -290,7 +301,9 @@ export function ChatView({
     setStreaming(true);
     setPendingUser(message);
     setStreamingContent("");
+    setStreamingComplete(false);
     setStreamingTools([]);
+    setStreamingSuggestions([]);
     setError("");
 
     try {
@@ -332,7 +345,9 @@ export function ChatView({
       }
       setPendingUser(null);
       setStreamingContent("");
+      setStreamingComplete(false);
       setStreamingTools([]);
+      setStreamingSuggestions([]);
       setStreaming(false);
       if (abortRef.current === controller) abortRef.current = null;
     }
@@ -343,7 +358,8 @@ export function ChatView({
     messages.length === 0 &&
     !pendingUser &&
     !streamingContent &&
-    streamingTools.length === 0;
+    streamingTools.length === 0 &&
+    streamingSuggestions.length === 0;
 
   return (
     <main className="chat-page">
@@ -432,9 +448,13 @@ export function ChatView({
             messages={messages}
             pendingUser={pendingUser}
             streamingContent={streamingContent}
+            streamingComplete={streamingComplete}
             streamingTools={streamingTools}
+            streamingSuggestions={streamingSuggestions}
+            suggestionsDisabled={streaming}
             error={error}
             onOpenDivination={onOpenDivination}
+            onSelectSuggestion={(question) => void sendMessage(question)}
           />
         )}
 

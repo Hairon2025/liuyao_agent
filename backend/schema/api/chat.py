@@ -20,6 +20,7 @@ ChatMessageTypeValue = Literal[
     "tool_call",
     "tool_result",
     "summary",
+    "suggestions",
 ]
 ChatMessageStatusValue = Literal[
     "pending",

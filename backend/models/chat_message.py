@@ -39,7 +39,8 @@ class ChatMessage(Base):
             name="valid_role",
         ),
         CheckConstraint(
-            "message_type IN ('text', 'tool_call', 'tool_result', 'summary')",
+            "message_type IN "
+            "('text', 'tool_call', 'tool_result', 'summary', 'suggestions')",
             name="valid_message_type",
         ),
         CheckConstraint(

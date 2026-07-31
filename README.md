@@ -14,8 +14,8 @@
 - **数据校验**：Pydantic v2 + pydantic-settings
 - **数据库**：SQLAlchemy 2.x + SQLite + Alembic
 - **八字排盘**：lunar_python
-- **LLM 客户端**：模型适配接口 + OpenAI Chat Completions 兼容适配器
-- **Agent 框架**：自研最小 ReActRunner + ToolRegistry
+- **LLM / Agent**：OpenAI Agents SDK + OpenAI-compatible Chat Completions
+- **Agent 能力**：SDK Agent + Function Tool + SQLAlchemySession + Python 多 Agent 编排
 
 ## 目录结构
 
@@ -30,7 +30,7 @@ liuyao_agent/
 │   │   └── routes/
 │   │       ├── health.py     #   GET /health
 │   │       └── divination.py
-│   ├── agent/                #   多 Agent 解卦层（依赖 LLM）
+│   ├── agent/                #   Agents SDK 运行时、Function Tools、多 Agent 编排
 │   ├── db/                   #   SQLAlchemy Base、Engine、Session
 │   ├── models/               #   SQLAlchemy ORM Model
 │   ├── repositories/         #   数据访问层
@@ -45,7 +45,7 @@ liuyao_agent/
 │   ├── tests/                #   pytest 单元测试
 │   ├── main.py               #   uvicorn 启动入口（默认 127.0.0.1:8022）
 │   ├── requirements.txt
-│   └── .env.example
+│   └── .env.sample
 │
 ├── frontend/                 # Next.js 前端
 │
@@ -146,7 +146,7 @@ npm run dev
 | `PATCH` | `/chat/sessions/{id}` | 修改标题、归档状态、模型或当前卦例 |
 | `DELETE` | `/chat/sessions/{id}` | 删除会话及其消息 |
 | `GET` | `/chat/sessions/{id}/messages` | 按消息序号游标读取历史 |
-| `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 ReAct 对话 |
+| `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 Agents SDK 对话 |
 
 除用户创建与查询接口外，所有 `/divinations` 请求都需要携带
 `X-User-ID: <uuid>`。这是 MVP 阶段的临时身份传输方式；前端会自动创建访客
@@ -157,21 +157,38 @@ npm run dev
 
 聊天模块后端已经形成完整闭环：
 
-- `chat_sessions`：保存用户归属、标题、归档状态、当前卦例和上下文压缩摘要。
-- `chat_messages`：保存文本、工具调用、工具结果、流式生成状态及会话内序号。
+- `chat_sessions`：保存用户归属、标题、归档状态、当前卦例和领域工作流草稿。
+- `chat_messages`：保存文本、工具调用、工具结果、结构化追问建议、流式生成状态及会话内序号。
+- `agent_sessions` / `agent_messages`：由 SDK `SQLAlchemySession` 保存模型上下文。
 - 一个会话可以关联多个卦例，`active_divination_id` 只表示当前主要讨论对象。
-- 删除会话会级联删除消息；删除卦例只会把聊天中的卦例外键设置为 `NULL`。
+- 删除会话时会同时清理业务消息和 SDK 上下文；删除卦例只会把聊天中的
+  卦例外键设置为 `NULL`。
 - `ChatSessionRepository` 对会话进行用户所有权过滤，并通过数据库原子计数器
   预留消息序号。
 - `ChatMessageRepository` 通过所属会话校验用户，支持序号游标分页、最近消息和
   工具调用/结果配对查询。
 - 同一会话内 `(session_id, sequence)` 唯一；预留序号和消息写入必须放在同一事务。
-- `ChatContextBuilder` 使用“旧摘要 + 摘要游标之后的已完成消息”构建模型上下文。
-- `ReActRunner` 负责模型流、工具执行和 Observation 回填，并限制最大工具步数。
-- `OpenAIChatModelAdapter` 使用 Chat Completions 协议，也可连接兼容该协议的服务。
-- 当前工具包括创建并排盘、读取当前/指定卦例、列出最近卦例；所有读取均校验用户所有权。
-- 达到消息阈值后，`ChatContextSummarizer` 会保留最近消息并压缩较旧上下文。
+- SDK `Runner` 负责标准 Agent 的模型流、工具循环和上下文回填。
+- `LiuYaoChatbot` 是协调 Agent，负责理解普通聊天、新起卦、补充信息、
+  当前卦追问和历史查询；当前版本不使用 Router、Handoff、Sandbox 或 Skill。
+- `ChatAgentOrchestrator` 在新卦创建后串行调用原有 `LiuYaoAnalyst`：
+  报告一边通过 SSE 输出，一边保存到 `divinations.interpretation.detail`，
+  同时作为聊天正文落库。
+- `SuggestedQuestionAgent` 在正文完成后独立生成 JSON 追问建议；失败只记录日志，
+  不会把已经生成的主回答判为失败。
+- Function Tools 包括合并起卦信息、取消未完成流程、读取当前/指定卦例、
+  列出最近卦例；
+  所有读取均校验用户所有权。
+- `ChatDivinationWorkflow` 将未收集完整的参数保存在 `workflow_state`，完整后才调用
+  确定性的 `DivinationService` 起卦排盘；它也负责逐次追加铜钱结果和区分
+  “现在”与指定时间，模型不会自行计算卦象。
+- `CHAT_CONTEXT_RECENT_LIMIT` 限制 SDK 每轮读取的最近 Item 数；当前版本不做语义摘要。
+- 前端卦例页的单次“AI 解读”和 Chatbot 首次正式报告均复用原始
+  `LiuYaoAnalyst + liuyao_analyst.txt`，但仍保留两个独立 HTTP 使用入口。
 - 隐藏思考过程不保存；仅持久化用户文本、可见回答、工具调用和工具结果。
+
+Agent 代码的推荐阅读顺序见
+[`backend/agent/README.md`](./backend/agent/README.md)。
 
 ### Chatbot 配置
 
@@ -183,13 +200,15 @@ LLM_TIMEOUT_SECONDS=120
 
 CHAT_MAX_STEPS=6
 CHAT_CONTEXT_RECENT_LIMIT=50
-CHAT_SUMMARY_TRIGGER_MESSAGES=40
-CHAT_SUMMARY_KEEP_RECENT=12
 ```
 
-`CHAT_SUMMARY_KEEP_RECENT` 必须小于
-`CHAT_SUMMARY_TRIGGER_MESSAGES`。模型客户端采用延迟初始化，因此未配置 API Key
-时仍可使用会话 CRUD 和历史读取接口；只有实际发送 Chatbot 消息时才需要模型凭据。
+`CHAT_MAX_STEPS` 会传给 SDK `Runner.max_turns`；
+`CHAT_CONTEXT_RECENT_LIMIT` 会传给 SDK `SQLAlchemySession`。模型客户端采用
+延迟初始化，因此未配置 API Key 时仍可使用会话 CRUD 和历史读取接口；只有实际
+发送 Chatbot 消息时才需要模型凭据。
+
+每次模型生成和工具调用后的继续生成都会占用 turn。一次普通业务工具调用通常
+至少需要“模型选择工具”和“模型根据工具结果回答”两个阶段，因此默认使用 6。
 
 ### Chatbot SSE 契约
 
@@ -208,6 +227,7 @@ CHAT_SUMMARY_KEEP_RECENT=12
 - `tool_call_started`：工具开始；
 - `tool_call_completed` / `tool_call_failed`：工具结果；
 - `message_completed`：本轮完整可见文本；
+- `suggestions`：三条结构化追问及其来源消息 ID；
 - `error`：结构化错误；
 - `done`：流结束，data 为 `[DONE]`。
 
@@ -308,8 +328,8 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 - [x] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
 - [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
 - [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库
-- [x] **阶段 6：会话管理后端** — Chat Model / Repository / Service、ReAct Agent、工具、SSE API、上下文摘要
-- [ ] **阶段 6.1：Chatbot 前端** — 会话列表、消息流展示与工具状态 UI
+- [x] **阶段 6：会话管理后端** — Chat Model / Repository / Service、Agents SDK、工具、Skill、SSE API
+- [x] **阶段 6.1：Chatbot 前端** — 会话列表、消息流展示与工具状态 UI
 
 ## 合规与免责声明
 

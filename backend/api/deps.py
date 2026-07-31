@@ -2,32 +2,31 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
 from backend.config.settings import settings
-from backend.agent.context_builder import ChatContextBuilder
-from backend.agent.context_summarizer import ChatContextSummarizer
-from backend.agent.model import OpenAIChatModelAdapter
-from backend.agent.react_runner import ReActRunner
-from backend.agent.tools import (
-    CreateDivinationTool,
-    GetDivinationTool,
-    ListDivinationsTool,
-    ToolRegistry,
-)
+from backend.agent.chatbot_agent import LiuYaoChatbot
+from backend.agent.chat_orchestrator import ChatAgentOrchestrator
+from backend.agent.liuyao_agent import analyst
+from backend.agent.runtime.model import AgentModelFactory
+from backend.agent.runtime.session import AgentSessionFactory
+from backend.agent.suggested_question_agent import suggested_question_agent
 from backend.db.session import get_db_session
 from backend.models.user import User
-from backend.repositories.divination import DivinationRepository
 from backend.repositories.chat_message import ChatMessageRepository
 from backend.repositories.chat_session import ChatSessionRepository
+from backend.repositories.divination import DivinationRepository
 from backend.repositories.user import UserRepository
-from backend.services.divination import DivinationService
 from backend.services.chat import ChatService
+from backend.services.chat_divination_workflow import ChatDivinationWorkflow
+from backend.services.divination import DivinationService
 from backend.services.user import UserService
+
+
+_agent_model_factory = AgentModelFactory()
 
 
 def get_settings():
@@ -92,7 +91,7 @@ def get_divination_service(session: DbSession) -> DivinationService:
 
 
 def get_chat_service(session: DbSession) -> ChatService:
-    """组装一次请求使用的 Chatbot 执行链。"""
+    """组装一次请求使用的 Agents SDK Chatbot 执行链。"""
     session_repository = ChatSessionRepository(session)
     message_repository = ChatMessageRepository(session)
     divination_repository = DivinationRepository(session)
@@ -100,44 +99,40 @@ def get_chat_service(session: DbSession) -> ChatService:
         repository=divination_repository,
         session=session,
     )
-    model_adapter = OpenAIChatModelAdapter()
-    registry = ToolRegistry(
-        [
-            CreateDivinationTool(divination_service),
-            GetDivinationTool(divination_service),
-            ListDivinationsTool(divination_service),
-        ]
+    workflow = ChatDivinationWorkflow(
+        chat_session_repository=session_repository,
+        divination_service=divination_service,
+        session=session,
     )
-    prompt_path = (
-        Path(__file__).resolve().parents[1]
-        / "agent"
-        / "prompt"
-        / "chatbot.txt"
+    bind = session.bind
+    if isinstance(bind, AsyncEngine):
+        sdk_engine = bind
+    elif isinstance(bind, AsyncConnection):
+        sdk_engine = bind.engine
+    else:
+        raise RuntimeError("ChatService 需要绑定 AsyncEngine 的数据库会话")
+
+    agent_session_factory = AgentSessionFactory(
+        engine=sdk_engine,
+        recent_limit=settings.chat_context_recent_limit,
     )
-    runner = ReActRunner(
-        model_adapter=model_adapter,
-        tool_registry=registry,
-        instructions=prompt_path.read_text(encoding="utf-8"),
-        max_steps=settings.chat_max_steps,
+    coordinator = LiuYaoChatbot(
+        model_factory=_agent_model_factory,
+        max_turns=settings.chat_max_steps,
     )
-    context_builder = ChatContextBuilder(
-        session_repository=session_repository,
-        message_repository=message_repository,
-        recent_message_limit=settings.chat_context_recent_limit,
-    )
-    summarizer = ChatContextSummarizer(
-        session_repository=session_repository,
-        message_repository=message_repository,
-        model_adapter=model_adapter,
-        trigger_messages=settings.chat_summary_trigger_messages,
-        keep_recent=settings.chat_summary_keep_recent,
+    chatbot = ChatAgentOrchestrator(
+        coordinator=coordinator,
+        analyst=analyst,
+        divination_service=divination_service,
     )
     return ChatService(
         session_repository=session_repository,
         message_repository=message_repository,
         divination_repository=divination_repository,
-        context_builder=context_builder,
-        runner=runner,
-        summarizer=summarizer,
+        chatbot=chatbot,
+        agent_session_factory=agent_session_factory,
+        divination_service=divination_service,
+        chat_divination_workflow=workflow,
         session=session,
+        suggested_question_agent=suggested_question_agent,
     )

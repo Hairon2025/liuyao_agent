@@ -1,18 +1,54 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../../types";
 import {
   ChatToolCard,
   type StreamingToolState,
 } from "./ChatToolCard";
+import { SuggestedQuestions } from "./SuggestedQuestions";
+
+function suggestionQuestions(message: ChatMessage) {
+  if (
+    !message.payload ||
+    typeof message.payload !== "object" ||
+    !("questions" in message.payload)
+  ) {
+    return [];
+  }
+  const questions = (message.payload as { questions?: unknown }).questions;
+  return Array.isArray(questions)
+    ? questions.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+const markdownComponents: Components = {
+  table({ children }) {
+    return (
+      <div className="chat-table-scroll" tabIndex={0}>
+        <table>{children}</table>
+      </div>
+    );
+  },
+  a({ children, href }) {
+    return (
+      <a href={href} target="_blank" rel="noreferrer">
+        {children}
+      </a>
+    );
+  },
+};
 
 function MarkdownMessage({ content }: { content: string }) {
   return (
     <div className="chat-markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={markdownComponents}
+        skipHtml
+      >
         {content}
       </ReactMarkdown>
     </div>
@@ -23,21 +59,35 @@ export function ChatMessageList({
   messages,
   pendingUser,
   streamingContent,
+  streamingComplete,
   streamingTools,
+  streamingSuggestions,
+  suggestionsDisabled,
   error,
   onOpenDivination,
+  onSelectSuggestion,
 }: {
   messages: ChatMessage[];
   pendingUser: string | null;
   streamingContent: string;
+  streamingComplete: boolean;
   streamingTools: StreamingToolState[];
+  streamingSuggestions: string[];
+  suggestionsDisabled: boolean;
   error: string;
   onOpenDivination: (id: string) => void;
+  onSelectSuggestion: (question: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
-  }, [messages, pendingUser, streamingContent, streamingTools]);
+  }, [
+    messages,
+    pendingUser,
+    streamingContent,
+    streamingTools,
+    streamingSuggestions,
+  ]);
 
   return (
     <div className="chat-message-scroll">
@@ -50,6 +100,16 @@ export function ChatMessageList({
                 key={message.id}
                 message={message}
                 onOpenDivination={onOpenDivination}
+              />
+            );
+          }
+          if (message.message_type === "suggestions") {
+            return (
+              <SuggestedQuestions
+                key={message.id}
+                questions={suggestionQuestions(message)}
+                disabled={suggestionsDisabled}
+                onSelect={onSelectSuggestion}
               />
             );
           }
@@ -104,9 +164,19 @@ export function ChatMessageList({
             <span>易</span>
             <div>
               <MarkdownMessage content={streamingContent} />
-              <i className="chat-caret" aria-label="正在生成" />
+              {!streamingComplete && (
+                <i className="chat-caret" aria-label="正在生成" />
+              )}
             </div>
           </article>
+        )}
+
+        {streamingSuggestions.length > 0 && (
+          <SuggestedQuestions
+            questions={streamingSuggestions}
+            disabled={suggestionsDisabled}
+            onSelect={onSelectSuggestion}
+          />
         )}
 
         {error && (

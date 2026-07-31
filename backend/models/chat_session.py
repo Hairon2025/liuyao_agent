@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     CheckConstraint,
@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     Uuid,
@@ -29,7 +30,8 @@ if TYPE_CHECKING:
 class ChatSession(Base):
     """用户与 Chatbot 的一次连续会话。
 
-    `summary` 和 `summary_through_sequence` 为后续上下文压缩预留；
+    `summary` 和 `summary_through_sequence` 是旧版自研上下文摘要的兼容字段，
+    Agents SDK 运行时不再读取它们；
     `active_divination_id` 只表示当前主要讨论的卦例，不限制会话关联多个卦例。
     """
 
@@ -77,6 +79,12 @@ class ChatSession(Base):
         nullable=True,
         index=True,
     )
+    # 显式保存尚未完成的领域工作流，避免关键参数只存在于模型上下文中。
+    workflow_state: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON,
+        nullable=True,
+    )
+    # 兼容旧数据库/API；模型上下文已由 agent_messages 管理。
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_through_sequence: Mapped[int] = mapped_column(
         Integer,

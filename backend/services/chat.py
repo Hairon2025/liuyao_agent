@@ -8,16 +8,21 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.agent.context_builder import ChatContextBuilder
-from backend.agent.context_summarizer import ChatContextSummarizer
-from backend.agent.react_runner import ReActRunner
+from backend.agent.chat_orchestrator import ChatAgentOrchestrator
+from backend.agent.runtime.context import AgentRunContext
+from backend.agent.runtime.session import AgentSessionFactory
+from backend.agent.suggested_question_agent import SuggestedQuestionAgent
 from backend.models.chat_message import ChatMessage
 from backend.models.chat_session import ChatSession
 from backend.models.user import utc_now
 from backend.repositories.chat_message import ChatMessageRepository
 from backend.repositories.chat_session import ChatSessionRepository
 from backend.repositories.divination import DivinationRepository
-from backend.schema.agent import ChatEvent, ChatEventType
+from backend.schema.agent import (
+    ChatEvent,
+    ChatEventType,
+    SuggestedQuestionsPayload,
+)
 from backend.schema.api.chat import (
     ChatMessageResponse,
     ChatSessionCreate,
@@ -28,11 +33,13 @@ from backend.services.exceptions import (
     ChatSessionArchivedError,
     ChatSessionNotFoundError,
 )
+from backend.services.chat_divination_workflow import ChatDivinationWorkflow
+from backend.services.divination import DivinationService
 from backend.utils.logger import logger
 
 
 class ChatService:
-    """管理会话、消息持久化和一次完整的流式 ReAct 对话。"""
+    """管理业务会话，并用 Agents SDK 执行一次流式对话。"""
 
     _UPDATABLE_FIELDS = frozenset(
         {"title", "status", "active_divination_id", "model"}
@@ -44,18 +51,22 @@ class ChatService:
         session_repository: ChatSessionRepository,
         message_repository: ChatMessageRepository,
         divination_repository: DivinationRepository,
-        context_builder: ChatContextBuilder,
-        runner: ReActRunner,
-        summarizer: ChatContextSummarizer,
+        chatbot: ChatAgentOrchestrator,
+        agent_session_factory: AgentSessionFactory,
+        divination_service: DivinationService,
+        chat_divination_workflow: ChatDivinationWorkflow,
         session: AsyncSession,
+        suggested_question_agent: SuggestedQuestionAgent | None = None,
     ):
         self._session_repository = session_repository
         self._message_repository = message_repository
         self._divination_repository = divination_repository
-        self._context_builder = context_builder
-        self._runner = runner
-        self._summarizer = summarizer
+        self._chatbot = chatbot
+        self._agent_session_factory = agent_session_factory
+        self._divination_service = divination_service
+        self._chat_divination_workflow = chat_divination_workflow
         self._session = session
+        self._suggested_question_agent = suggested_question_agent
 
     async def create_session(
         self,
@@ -137,6 +148,8 @@ class ChatService:
         user_id: uuid.UUID,
     ) -> None:
         chat_session = await self._get_session_model(session_id, user_id)
+        # SDK 会话表不依赖 ORM 级联，先显式清理 Agent 历史。
+        await self._agent_session_factory.clear(session_id)
         await self._session_repository.delete(chat_session)
         await self._session.commit()
 
@@ -191,49 +204,92 @@ class ChatService:
         if chat_session.status != "active":
             raise ChatSessionArchivedError(str(session_id))
 
-        # 必须先构建旧上下文，再把本轮用户消息写入数据库，避免重复注入。
-        turn_input = await self._context_builder.build(
-            user_id=user_id,
-            session_id=session_id,
-            user_message=user_message,
-            model=model,
-        )
+        message_text = user_message.strip()
         await self._append_message(
             chat_session,
-            user_id,
+            user_id=user_id,
             role="user",
-            content=turn_input.user_message,
+            content=message_text,
             divination_id=chat_session.active_divination_id,
         )
         updates: dict[str, Any] = {"last_message_at": utc_now()}
         if chat_session.title is None:
-            updates["title"] = turn_input.user_message[:100]
+            updates["title"] = message_text[:100]
         await self._session_repository.update(chat_session, updates)
         await self._session.commit()
 
+        run_context = AgentRunContext(
+            user_id=user_id,
+            session_id=session_id,
+            divination_service=self._divination_service,
+            chat_divination_workflow=self._chat_divination_workflow,
+            active_divination_id=chat_session.active_divination_id,
+            workflow_state=chat_session.workflow_state,
+        )
+        sdk_session = self._agent_session_factory.create(session_id)
         visible_chunks: list[str] = []
+        # SDK 会在后台执行 Function Tool，并先发出 tool_call_started。
+        # 工具与本 Service 共享请求级 AsyncSession，因此工具完成前不能在这里
+        # flush；先缓存开始事件，收到结果后再按调用、结果顺序持久化。
+        pending_tool_calls: dict[str, ChatEvent] = {}
         terminal_event_seen = False
+        completed_assistant: ChatMessage | None = None
+        suggestions_allowed = True
         try:
-            async for event in self._runner.run(turn_input):
+            async for event in self._chatbot.stream(
+                user_message=message_text,
+                context=run_context,
+                session=sdk_session,
+                model=model or chat_session.model,
+            ):
                 if event.event_type == ChatEventType.TEXT_DELTA:
                     visible_chunks.append(event.content or "")
                 elif event.event_type == ChatEventType.TOOL_CALL_STARTED:
-                    await self._persist_tool_call(
-                        chat_session,
-                        user_id,
-                        event,
-                    )
+                    assert event.tool_call_id is not None
+                    pending_tool_calls[event.tool_call_id] = event
                 elif event.event_type in {
                     ChatEventType.TOOL_CALL_COMPLETED,
                     ChatEventType.TOOL_CALL_FAILED,
                 }:
+                    assert event.tool_call_id is not None
+                    started = pending_tool_calls.pop(
+                        event.tool_call_id,
+                        None,
+                    )
+                    if started is not None:
+                        await self._persist_tool_call(
+                            chat_session,
+                            user_id,
+                            started,
+                        )
                     await self._persist_tool_result(
                         chat_session,
                         user_id,
                         event,
                     )
+                    if (
+                        event.tool_result is not None
+                        and isinstance(event.tool_result.data, dict)
+                    ):
+                        candidate = event.tool_result.data.get(
+                            "divination_id"
+                        )
+                        if isinstance(candidate, str):
+                            run_context.active_divination_id = candidate
+                    if (
+                        event.tool_result is not None
+                        and isinstance(event.tool_result.data, dict)
+                        and event.tool_result.data.get("status")
+                        == "needs_input"
+                    ):
+                        suggestions_allowed = False
                 elif event.event_type == ChatEventType.MESSAGE_COMPLETED:
-                    await self._append_message(
+                    await self._persist_pending_tool_calls(
+                        chat_session,
+                        user_id,
+                        pending_tool_calls,
+                    )
+                    completed_assistant = await self._append_message(
                         chat_session,
                         user_id,
                         role="assistant",
@@ -247,6 +303,11 @@ class ChatService:
                     await self._session.commit()
                     terminal_event_seen = True
                 elif event.event_type == ChatEventType.ERROR:
+                    await self._persist_pending_tool_calls(
+                        chat_session,
+                        user_id,
+                        pending_tool_calls,
+                    )
                     await self._persist_failed_assistant(
                         chat_session,
                         user_id,
@@ -258,8 +319,21 @@ class ChatService:
 
                 yield event
 
-            if terminal_event_seen:
-                await self._try_summarize(user_id, session_id)
+            if (
+                terminal_event_seen
+                and completed_assistant is not None
+                and suggestions_allowed
+                and run_context.active_divination_id is not None
+            ):
+                suggestion_event = await self._generate_suggestions(
+                    chat_session=chat_session,
+                    user_id=user_id,
+                    user_message=message_text,
+                    assistant_message=completed_assistant,
+                    divination_id=run_context.active_divination_id,
+                )
+                if suggestion_event is not None:
+                    yield suggestion_event
         except asyncio.CancelledError:
             if not terminal_event_seen:
                 await self._persist_failed_assistant(
@@ -273,6 +347,72 @@ class ChatService:
             await self._session.rollback()
             logger.exception("Chatbot 流式执行或消息持久化失败")
             raise
+
+    async def _generate_suggestions(
+        self,
+        *,
+        chat_session: ChatSession,
+        user_id: uuid.UUID,
+        user_message: str,
+        assistant_message: ChatMessage,
+        divination_id: str,
+    ) -> ChatEvent | None:
+        """生成辅助追问；失败只记日志，不影响已经完成的主回答。"""
+        if (
+            self._suggested_question_agent is None
+            or not assistant_message.content
+        ):
+            return None
+        # rollback 会让 ORM 实例过期。提前保存纯值，异常日志中不要再次触发
+        # chat_session 属性的懒加载，否则异步环境会额外抛出 MissingGreenlet。
+        chat_session_id = chat_session.id
+        try:
+            generated = await self._suggested_question_agent.generate(
+                user_message=user_message,
+                assistant_answer=assistant_message.content,
+            )
+            if not generated.questions:
+                return None
+            payload = SuggestedQuestionsPayload(
+                source_message_id=assistant_message.id,
+                questions=generated.questions,
+            )
+            await self._append_message(
+                chat_session,
+                user_id,
+                role="assistant",
+                message_type="suggestions",
+                payload=payload.model_dump(mode="json"),
+                divination_id=divination_id,
+            )
+            await self._session.commit()
+            return ChatEvent(
+                event_type=ChatEventType.SUGGESTIONS,
+                source_message_id=assistant_message.id,
+                questions=generated.questions,
+            )
+        except Exception:
+            await self._session.rollback()
+            logger.exception(
+                "会话 %s 的追问建议生成或保存失败",
+                chat_session_id,
+            )
+            return None
+
+    async def _persist_pending_tool_calls(
+        self,
+        chat_session: ChatSession,
+        user_id: uuid.UUID,
+        pending: dict[str, ChatEvent],
+    ) -> None:
+        """在 Agent 已结束工具执行后补存没有结果事件的工具调用。"""
+        for event in pending.values():
+            await self._persist_tool_call(
+                chat_session,
+                user_id,
+                event,
+            )
+        pending.clear()
 
     async def _persist_tool_call(
         self,
@@ -405,22 +545,6 @@ class ChatService:
         if added is None:
             raise ChatSessionNotFoundError(str(chat_session.id))
         return added
-
-    async def _try_summarize(
-        self,
-        user_id: uuid.UUID,
-        session_id: uuid.UUID,
-    ) -> None:
-        try:
-            changed = await self._summarizer.maybe_summarize(
-                user_id=user_id,
-                session_id=session_id,
-            )
-            if changed:
-                await self._session.commit()
-        except Exception:
-            await self._session.rollback()
-            logger.exception("Chatbot 上下文摘要失败，本轮回答仍保留")
 
     async def _get_session_model(
         self,
