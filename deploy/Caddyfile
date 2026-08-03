@@ -1,0 +1,26 @@
+# 当前用于“公网 IP + HTTP”测试部署。
+# Caddy 容器内部监听 80，Compose 默认映射为服务器的 8080 端口。
+# 3000 和 8022 仅在 Docker 内部网络开放。
+:80 {
+    encode zstd gzip
+
+    handle /healthz {
+        respond "ok" 200
+    }
+
+    handle_path /api/* {
+        reverse_proxy backend:8022 {
+            # 明确关闭响应缓冲，确保解读和 Chatbot 的 SSE 实时到达浏览器。
+            flush_interval -1
+        }
+    }
+
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

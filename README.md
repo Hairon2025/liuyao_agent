@@ -48,6 +48,8 @@ liuyao_agent/
 │
 ├── frontend/                 # Next.js 前端
 │
+├── deploy/                   # Docker 反向代理与运行环境模板
+├── compose.yaml              # 前端、后端、Caddy 一键编排
 ├── assets/
 ├── logs/
 │
@@ -131,6 +133,19 @@ npm run dev
 
 如后端部署在其他地址，复制 `frontend/.env.example` 为
 `frontend/.env.local`，并修改 `NEXT_PUBLIC_API_BASE_URL`。
+
+### Docker 测试部署
+
+当前仓库提供“公网 IP + HTTP”的 Compose 部署方案，默认访问地址为
+`http://服务器公网IP:8080`：
+
+```bash
+cp deploy/backend.env.example deploy/backend.env
+docker compose build
+docker compose up -d
+```
+
+完整说明见 [Docker 部署指南](./docs/DOCKER_DEPLOYMENT.md)。
 
 ## API 端点
 

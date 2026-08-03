@@ -54,6 +54,8 @@ liuyao_agent/
 │
 ├── frontend/                  # Next.js 前端（默认连 http://127.0.0.1:8022）
 │
+├── deploy/                    # Docker Caddy 配置与后端环境模板
+├── compose.yaml               # 前端、后端、Caddy 编排
 ├── assets/                    # 跨端素材
 ├── logs/                      # 跨端日志
 │
@@ -146,6 +148,12 @@ npm run dev      # 默认连 http://localhost:8022
 如后端部署在其他地址，复制 `frontend/.env.example` 为 `frontend/.env.local`，并修改 `NEXT_PUBLIC_API_BASE_URL`。
 
 **前端铜钱起卦** 在浏览器逐掷模拟三枚铜钱翻转（共六掷），每掷换算为少阴 / 少阳 / 老阳 / 老阴，最终把 6 个编码通过 `method=manual` 提交给后端，不依赖后端 `backend/core/qigua.py` 的 `coin` 随机实现。
+
+## Docker 部署
+
+无域名测试环境使用根目录 `compose.yaml`，由 Caddy 将 `/api/*` 转发到后端，
+其余请求转发到前端。SQLite 单独持久化到 `/data`，不要把整个
+`backend/running_data` 挂载成数据卷。详见 `docs/DOCKER_DEPLOYMENT.md`。
 
 ## API 端点
 

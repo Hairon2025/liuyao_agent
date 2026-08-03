@@ -43,6 +43,8 @@ liuyao_agent/
 │
 ├── frontend/                  # Next.js 前端（默认连 http://127.0.0.1:8022）
 │
+├── deploy/                    # Docker Caddy 配置与后端环境模板
+├── compose.yaml               # 前端、后端、Caddy 编排
 ├── assets/                    # 跨端素材
 ├── logs/                      # 跨端日志
 │
@@ -132,6 +134,12 @@ npm run dev
 ```
 
 如后端部署在其他地址，复制 `frontend/.env.example` 为 `frontend/.env.local`，并修改 `NEXT_PUBLIC_API_BASE_URL`。
+
+## Docker 部署
+
+无域名测试环境使用根目录 `compose.yaml`，由 Caddy 将 `/api/*` 转发到后端，
+其余请求转发到前端。SQLite 单独持久化到 `/data`，不要把整个
+`backend/running_data` 挂载成数据卷。详见 `docs/DOCKER_DEPLOYMENT.md`。
 
 ## API 端点
 

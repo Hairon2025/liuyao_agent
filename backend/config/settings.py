@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     app_name: str = "liuyao-agent"
     app_version: str = "0.1.0"
     debug: bool = False
+    root_path: str = ""
 
     # LLM 配置。Pydantic Settings 会自动读取同名环境变量。
     llm_api_key: str = ""

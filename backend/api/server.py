@@ -29,6 +29,7 @@ app = FastAPI(
     title="六爻解卦助手 API",
     description="基于多 Agent 协作的六爻解卦服务",
     version="0.1.0",
+    root_path=settings.root_path,
     lifespan=lifespan,
 )
 

@@ -43,6 +43,8 @@ backend/running_data/.user_llm_encryption_key
 *.swp
 
 .env.example
+deploy/backend.env
+deploy/backups/
 
 
 六爻模版.md
