@@ -138,9 +138,14 @@ npm run dev
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
-| `POST` | `/users/guests` | 创建匿名用户 |
-| `GET` | `/users/{id}` | 查询用户 |
-| `PATCH` | `/users/{id}` | 更新用户昵称 |
+| `POST` | `/auth/guests` | 创建游客 Session |
+| `POST` | `/auth/register` | 游客原地升级为注册用户 |
+| `POST` | `/auth/login` | 用户名密码登录 |
+| `POST` | `/auth/logout` | 注销当前 Session |
+| `GET` | `/auth/me` | 查询当前身份 |
+| `GET/PATCH` | `/users/me` | 查询或更新当前资料 |
+| `GET/PUT/DELETE` | `/users/me/llm-settings` | 管理个人 LLM 设置 |
+| `POST` | `/users/me/llm-settings/test` | 测试已保存模型连接 |
 | `POST` | `/divinations` | 起卦 + 排盘并保存数据库 |
 | `GET` | `/divinations` | 列出当前用户的卦例 ID |
 | `GET` | `/divinations/{id}` | 查询当前用户的一条卦例 |
@@ -152,8 +157,9 @@ npm run dev
 | `POST` | `/chat/sessions/{id}/messages/stream` | SSE 执行一轮 Chatbot 对话 |
 | `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 异步生成并缓存结构化追问 |
 
-所有 `/divinations` 与 `/chat/sessions` 请求必须携带 MVP 临时身份请求头
-`X-User-ID`；Repository 查询必须同时限定资源 ID 和用户 ID。
+身份通过 HttpOnly Cookie 的服务端 Session 传递；Repository 查询必须同时限定资源
+ID 和用户 ID。游客可起卦、排盘和查看自己的历史；AI 解读与 Chatbot 要求注册登录
+且已配置个人 LLM。用户 API Key 只能以 AES-GCM 密文入库，不得写入日志或响应。
 
 ## 起卦方式与爻位编码
 
@@ -173,6 +179,7 @@ npm run dev
 - **Agent 层使用 OpenAI Agents SDK**；模型上下文交给 SDK Session，不再手工拼接
 - **当前不使用 Skill / Sandbox / Handoff**；起卦排盘必须通过 Function Tool → Service → core
 - **多 Agent 由 Python 串行编排**；首次报告与结构化追问不得交给协调 Agent 重复生成
+- **Agent 模型按请求注入**；使用当前注册用户保存的 Base URL、API Key 与角色模型
 - **Agent 输出必须结构化**（JSON 或 Markdown），便于聚合与展示
 - 所有解卦解读输出必须附带免责声明：`本结果仅供文化娱乐参考，不构成任何人生决策依据`
 - 修改跨包 import 时注意保留 `backend.` 前缀（仓库根目录才是 Python 解析 `backend` 包的正确 cwd）

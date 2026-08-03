@@ -8,6 +8,26 @@ class UserNotFoundError(Exception):
     """目标用户不存在。"""
 
 
+class UsernameAlreadyExistsError(Exception):
+    """注册用户名已存在。"""
+
+
+class InvalidCredentialsError(Exception):
+    """用户名或密码错误。"""
+
+
+class RegisteredUserRequiredError(Exception):
+    """当前功能只允许注册用户使用。"""
+
+
+class UserLLMSettingsRequiredError(Exception):
+    """用户尚未配置自己的模型连接。"""
+
+
+class UserLLMSettingsInvalidError(Exception):
+    """用户模型配置无法解密或不合法。"""
+
+
 class DivinationNotFoundError(Exception):
     """当前用户下不存在目标卦例。"""
 

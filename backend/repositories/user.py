@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from backend.models.user import User
 
@@ -19,6 +20,11 @@ class UserRepository:
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         """按主键读取用户。"""
         return await self._session.get(User, user_id)
+
+    async def get_by_normalized_username(self, username: str) -> User | None:
+        return await self._session.scalar(
+            select(User).where(User.username_normalized == username)
+        )
 
     async def add(self, user: User) -> User:
         """新增用户并 flush，使主键和默认字段立即可用。"""

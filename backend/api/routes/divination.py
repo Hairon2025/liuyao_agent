@@ -6,8 +6,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from backend.agent.liuyao_agent import analyst
-from backend.api.deps import get_current_user, get_divination_service
+from backend.agent.liuyao_agent import LiuYaoAnalyst
+from backend.api.deps import (
+    get_current_user,
+    get_divination_service,
+    get_user_analyst,
+    require_registered_user,
+)
 from backend.models.user import User
 from backend.schema.api.divination import (
     DivinationResponse,
@@ -23,6 +28,8 @@ from backend.utils.sse import text_stream_to_sse
 
 router = APIRouter(prefix="/divinations", tags=["divination"])
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+RegisteredUserDep = Annotated[User, Depends(require_registered_user)]
+AnalystDep = Annotated[LiuYaoAnalyst, Depends(get_user_analyst)]
 DivinationServiceDep = Annotated[
     DivinationService,
     Depends(get_divination_service),
@@ -151,8 +158,9 @@ async def get_markdown(
 )
 async def interpret_divination(
     divination_id: str,
-    user: CurrentUserDep,
+    user: RegisteredUserDep,
     service: DivinationServiceDep,
+    analyst: AnalystDep,
 ):
     """非流式调用 Agent 解卦，并将完整结果保存到数据库。"""
     markdown_content = await _get_interpretable_markdown(
@@ -177,8 +185,9 @@ async def interpret_divination(
 @router.post("/{divination_id}/interpret/stream")
 async def interpret_divination_stream(
     divination_id: str,
-    user: CurrentUserDep,
+    user: RegisteredUserDep,
     service: DivinationServiceDep,
+    analyst: AnalystDep,
 ):
     """以 SSE 流式输出解卦文本，生成完成后将完整结果保存到数据库。"""
     markdown_content = await _get_interpretable_markdown(

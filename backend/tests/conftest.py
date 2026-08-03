@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from backend.api.server import app
+from backend.config.settings import settings
 from backend.db.base import Base
 from backend.db.session import enable_sqlite_foreign_keys, get_db_session
 import backend.models  # noqa: F401  # 确保测试建表时已注册全部 Model
@@ -48,15 +49,31 @@ def client(tmp_path) -> TestClient:
 
     asyncio.run(prepare_database())
     app.dependency_overrides[get_db_session] = override_db_session
+    previous_encryption_key = settings.user_llm_encryption_key
+    settings.user_llm_encryption_key = "test-encryption-key-with-at-least-32-bytes"
 
     try:
         with TestClient(app) as test_client:
-            # 模拟前端首次访问：创建访客，并把临时身份放入后续请求头。
-            guest_response = test_client.post("/users/guests", json={})
+            # 默认测试身份模拟“游客原地注册并配置自己的模型”。
+            guest_response = test_client.post("/auth/guests", json={})
             assert guest_response.status_code == 201
-            test_client.headers["X-User-ID"] = guest_response.json()["id"]
+            register = test_client.post(
+                "/auth/register",
+                json={"username": "test_user", "password": "password123"},
+            )
+            assert register.status_code == 201, register.text
+            configured = test_client.put(
+                "/users/me/llm-settings",
+                json={
+                    "base_url": "https://llm.example.com/v1",
+                    "api_key": "test-api-key",
+                    "model": "test-model",
+                },
+            )
+            assert configured.status_code == 200, configured.text
             yield test_client
     finally:
+        settings.user_llm_encryption_key = previous_encryption_key
         app.dependency_overrides.pop(get_db_session, None)
         asyncio.run(test_engine.dispose())
 

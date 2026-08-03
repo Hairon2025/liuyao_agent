@@ -35,6 +35,7 @@ logs/*.log
 backend/running_data/*.db
 backend/running_data/*.db-shm
 backend/running_data/*.db-wal
+backend/running_data/.user_llm_encryption_key
 
 # 临时文件
 *.tmp

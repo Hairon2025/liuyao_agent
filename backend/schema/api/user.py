@@ -49,7 +49,9 @@ class UserResponse(BaseModel):
 
     id: uuid.UUID
     user_type: UserType
+    username: str | None
     display_name: str | None
     is_active: bool
+    last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime

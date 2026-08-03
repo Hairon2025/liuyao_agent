@@ -6,6 +6,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 _DEFAULT_DATABASE_PATH = _BACKEND_DIR / "running_data" / "liuyao.db"
+_DEFAULT_ENCRYPTION_KEY_PATH = (
+    _BACKEND_DIR / "running_data" / ".user_llm_encryption_key"
+)
 
 
 class Settings(BaseSettings):
@@ -43,6 +46,15 @@ class Settings(BaseSettings):
     chat_max_steps: int = 6
     chat_context_recent_limit: int = 50
 
+    # 登录 Session 与用户自带 LLM 密钥。
+    auth_cookie_name: str = "liuyao_session"
+    auth_session_days: int = 30
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
+    user_llm_encryption_key: str = ""
+    user_llm_encryption_key_file: Path = _DEFAULT_ENCRYPTION_KEY_PATH
+    allow_private_llm_base_urls: bool = False
+
     # 数据库配置。默认使用 backend/running_data/liuyao.db。
     database_url: str = f"sqlite+aiosqlite:///{_DEFAULT_DATABASE_PATH.as_posix()}"
 
@@ -50,7 +62,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # CORS
-    cors_origins: list[str] = ["*"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
 
     @property
     def effective_memory_llm_api_key(self) -> str:
@@ -94,6 +109,16 @@ class Settings(BaseSettings):
             raise ValueError(
                 "MEMORY_SUMMARY_TRIGGER_ITEMS 不能大于 "
                 "CHAT_CONTEXT_RECENT_LIMIT"
+            )
+        if self.auth_session_days < 1:
+            raise ValueError("AUTH_SESSION_DAYS 必须大于等于 1")
+        if self.auth_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError(
+                "AUTH_COOKIE_SAMESITE 必须是 lax、strict 或 none"
+            )
+        if self.auth_cookie_samesite == "none" and not self.auth_cookie_secure:
+            raise ValueError(
+                "AUTH_COOKIE_SAMESITE=none 时必须启用 AUTH_COOKIE_SECURE"
             )
         return self
 

@@ -1,5 +1,8 @@
 # Agent 代码阅读指南
 
+后续工程化优化计划见
+[`backend/agent/OPTIMIZATION_ROADMAP.md`](./OPTIMIZATION_ROADMAP.md)。
+
 当前项目使用 OpenAI Agents SDK 的标准 `Agent + Function Tool + Session`。
 Chatbot 不使用 Sandbox、Skill、Router Agent 或 Handoff。
 
@@ -75,7 +78,7 @@ flowchart LR
      `DivinationService`。
 
 7. `backend/agent/suggested_question_agent.py`
-   - 使用独立 `AgentModelFactory`，可连接便宜的 OpenAI-compatible 模型。
+   - 使用请求级 `AgentModelFactory`，可选择用户配置的低成本角色模型。
    - 只读取服务端裁剪后的最新问答，输出经 Pydantic 校验的 JSON。
    - 返回空数组或恰好三条追问；失败不影响已经完成的主回答。
 
@@ -92,8 +95,7 @@ flowchart LR
 
 10. `backend/agent/memory_summary_agent.py`
     - 使用独立 `AgentModelFactory` 生成 `ConversationMemory` JSON。
-    - `MEMORY_LLM_API_KEY`、`MEMORY_LLM_BASE_URL` 和 `MEMORY_LLM_MODEL`
-      留空时逐项回退主 LLM。
+    - 记忆模型未单独配置时回退当前用户的默认模型。
 
 11. `backend/services/divination.py` 与 `backend/core/`
    - 执行真实起卦、排盘、Markdown 生成和数据库保存。
@@ -104,8 +106,8 @@ flowchart LR
      缓存 `suggestions` 消息。
 
 13. `backend/agent/runtime/model.py`
-   - 显式创建 OpenAI-compatible 模型；主 Agent 与追问 Agent 可以使用不同
-     API Key、Base URL、模型和超时时间。
+   - 显式创建 OpenAI-compatible 模型；API 依赖层按当前注册用户解密配置，并为
+     协调、解读、追问和摘要 Agent 分别构建请求级工厂。
 
 14. `backend/agent/runtime/session.py`
    - 用 SDK `SQLAlchemySession` 保存模型原生上下文，再按配置包装为
@@ -136,6 +138,7 @@ flowchart LR
 迁移 `20260730_0006` 增加 `suggestions` 消息类型；
 迁移 `20260731_0007` 增加来源消息外键和一对一唯一约束；
 迁移 `20260731_0008` 增加长期摘要的 SDK Item 边界和更新时间：
+迁移 `20260803_0009` 增加登录凭证、服务端 Session、个人 LLM 设置与用量记录：
 
 ```bash
 python -m alembic -c backend/alembic.ini upgrade head

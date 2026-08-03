@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from pathlib import Path
 
 from agents import Agent, Runner
@@ -10,6 +11,7 @@ from agents.run import RunConfig
 
 from backend.agent.runtime.model import AgentModelFactory
 from backend.schema.agent.memory import ConversationMemory
+from backend.services.llm_usage import LLMUsageRecorder
 
 _PROMPT_FILE = Path(__file__).parent / "prompt" / "memory_summary.txt"
 _JSON_BLOCK = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
@@ -22,9 +24,11 @@ class MemorySummaryAgent:
         self,
         *,
         model_factory: AgentModelFactory | None = None,
+        usage_recorder: LLMUsageRecorder | None = None,
     ):
         self._model_factory = model_factory or AgentModelFactory()
         self._agent: Agent | None = None
+        self._usage_recorder = usage_recorder
 
     async def summarize(
         self,
@@ -51,16 +55,46 @@ class MemorySummaryAgent:
                 model=self._model_factory.create(),
                 instructions=_PROMPT_FILE.read_text(encoding="utf-8"),
             )
-        result = await Runner.run(
-            self._agent,
-            prompt,
-            max_turns=1,
-            run_config=RunConfig(
-                tracing_disabled=True,
-                workflow_name="LiuYao memory summary",
-            ),
+        started = time.perf_counter()
+        try:
+            result = await Runner.run(
+                self._agent,
+                prompt,
+                max_turns=1,
+                run_config=RunConfig(
+                    tracing_disabled=True,
+                    workflow_name="LiuYao memory summary",
+                ),
+            )
+        except Exception:
+            await self._record(started, "failed", error_code="model_error")
+            raise
+        await self._record(
+            started,
+            "completed",
+            usage=result.context_wrapper.usage,
         )
         return str(result.final_output or "")
+
+    async def _record(
+        self,
+        started: float,
+        status: str,
+        *,
+        usage=None,
+        error_code: str | None = None,
+    ) -> None:
+        if self._usage_recorder is None:
+            return
+        await self._usage_recorder.record(
+            agent_role="memory",
+            model=self._model_factory.default_model,
+            base_url=self._model_factory.base_url,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            status=status,
+            usage=usage,
+            error_code=error_code,
+        )
 
     @staticmethod
     def _build_input(

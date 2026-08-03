@@ -6,6 +6,8 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from backend.agent.base_agent import BaseAgent
+from backend.agent.runtime.model import AgentModelFactory
+from backend.services.llm_usage import LLMUsageRecorder
 
 _PROMPT_FILE = Path(__file__).parent / "prompt" / "liuyao_analyst.txt"
 
@@ -13,10 +15,21 @@ _PROMPT_FILE = Path(__file__).parent / "prompt" / "liuyao_analyst.txt"
 class LiuYaoAnalyst(BaseAgent):
     """六爻解卦分析师"""
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        model_factory: AgentModelFactory | None = None,
+        usage_recorder: LLMUsageRecorder | None = None,
+    ):
         self._template = _PROMPT_FILE.read_text(encoding="utf-8")
         # 角色定义全在模板里；system prompt 留空
-        super().__init__(name="liuyao_analyst", instructions="")
+        super().__init__(
+            name="liuyao_analyst",
+            instructions="",
+            model_factory=model_factory,
+            usage_recorder=usage_recorder,
+            agent_role="analyst",
+        )
 
     async def interpret(self, markdown_content: str) -> str:
         """把排盘 Markdown 填入 prompt 模板并请求完整解读。"""
@@ -35,7 +48,3 @@ class LiuYaoAnalyst(BaseAgent):
         )
         async for chunk in self.chat_stream(user_prompt):
             yield chunk
-
-
-# 模块级单例，避免每次请求都重新读 prompt 文件
-analyst = LiuYaoAnalyst()

@@ -6,7 +6,6 @@
 
 构建一个能"像人一样"解卦的 AI 助手。系统先通过纯算法完成起卦与排盘，再由多 Agent 协作完成解卦解读。MVP 阶段使用《增删卜易》作为知识库，后续引入 RAG 检索更多典籍（《卜筮正宗》《火珠林》《易隐》等）。
 
-更多业务背景见 [`六爻算卦助手的商业idea.md`](./六爻算卦助手的商业idea.md)，解卦输出格式见 [`六爻模版.md`](./六爻模版.md)。
 
 ## 技术栈
 
@@ -88,8 +87,16 @@ pip install -r backend/requirements.txt
 
 ```bash
 cp backend/.env.sample backend/.env
-# 编辑 backend/.env，填入 LLM_API_KEY 等配置
+# 生产部署时设置一个不会提交到 Git 的高熵主密钥：
+# USER_LLM_ENCRYPTION_KEY=<至少 32 字节的随机字符串>
 ```
+
+本地开发可以暂时留空，服务启动时会自动创建权限为 `0600` 的
+`backend/running_data/.user_llm_encryption_key`。该文件和环境变量密钥一样必须
+稳定保存；更换或丢失后，已加密的用户 API Key 将无法解密。
+
+LLM API Key 不再由服务端统一提供。注册用户登录后，在前端账户窗口中配置
+自己的 Base URL、API Key 和模型；API Key 使用上述主密钥进行 AES-GCM 加密后入库。
 
 ### 3. 应用数据库迁移
 
@@ -113,7 +120,8 @@ uvicorn backend.api.server:app --reload --host 127.0.0.1 --port 8022
 
 ### 启动前端
 
-前端项目位于 `frontend/`，默认连接 `http://127.0.0.1:8022`：
+前端项目位于 `frontend/`，默认连接 `http://localhost:8022`。开发时前后端应使用
+同一个主机名（例如都使用 `localhost`），以免浏览器的 SameSite Cookie 被拦截：
 
 ```bash
 cd frontend
@@ -129,9 +137,14 @@ npm run dev
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
-| `POST` | `/users/guests` | 创建匿名用户 |
-| `GET` | `/users/{id}` | 查询用户 |
-| `PATCH` | `/users/{id}` | 更新用户昵称 |
+| `POST` | `/auth/guests` | 创建游客和服务端 Session |
+| `POST` | `/auth/register` | 将当前游客原地升级为注册用户 |
+| `POST` | `/auth/login` | 用户名和密码登录 |
+| `POST` | `/auth/logout` | 注销当前 Session |
+| `GET` | `/auth/me` | 查询当前 Cookie 身份 |
+| `GET/PATCH` | `/users/me` | 查询或更新当前用户资料 |
+| `GET/PUT/DELETE` | `/users/me/llm-settings` | 管理当前用户的加密 LLM 设置 |
+| `POST` | `/users/me/llm-settings/test` | 测试已保存的模型连接 |
 | `POST` | `/divinations` | 起卦 + 排盘并保存数据库；可选 `generate_markdown=true` |
 | `GET` | `/divinations` | 列出当前用户的全部卦例 ID |
 | `GET` | `/divinations/{id}` | 查询当前用户的一条卦例 |
@@ -149,10 +162,9 @@ npm run dev
 | `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 Agents SDK 对话 |
 | `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 为已完成回答异步生成并缓存三条追问 |
 
-除用户创建与查询接口外，所有 `/divinations` 请求都需要携带
-`X-User-ID: <uuid>`。这是 MVP 阶段的临时身份传输方式；前端会自动创建访客
-并在浏览器中保存 ID。它不等同于安全认证，接入登录系统后应替换为服务端
-验证的登录态。
+身份通过 HttpOnly Cookie 中的随机 Session Token 传递，数据库只保存 Token 哈希。
+游客可使用确定性起卦、排盘和历史卦例；正式 AI 解读与所有 Chatbot 接口要求
+注册登录且已保存个人 LLM 设置。Repository 查询仍同时限定资源 ID 和用户 ID。
 
 ## Chatbot 后端
 
@@ -206,31 +218,15 @@ npm run dev
 Agent 代码的推荐阅读顺序见
 [`backend/agent/README.md`](./backend/agent/README.md)。
 
-### Chatbot 配置
+### Chatbot 与用户模型配置
 
 ```env
-LLM_API_KEY=your-api-key
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
-LLM_TIMEOUT_SECONDS=120
-
 CHAT_MAX_STEPS=6
 CHAT_CONTEXT_RECENT_LIMIT=50
 
-# 可选：长期记忆摘要使用独立模型；三项留空时分别回退到主 LLM
-MEMORY_LLM_API_KEY=
-MEMORY_LLM_BASE_URL=
-MEMORY_LLM_MODEL=
-MEMORY_LLM_TIMEOUT_SECONDS=30
 MEMORY_SUMMARY_TRIGGER_ITEMS=10
 MEMORY_SUMMARY_KEEP_RECENT_ITEMS=5
 MEMORY_SUMMARY_INPUT_MAX_CHARS=16000
-
-# 可选：追问建议使用独立低成本模型；留空字段回退到主 LLM
-SUGGESTION_LLM_API_KEY=
-SUGGESTION_LLM_BASE_URL=
-SUGGESTION_LLM_MODEL=deepseek-v4-flash
-SUGGESTION_LLM_TIMEOUT_SECONDS=30
 SUGGESTION_CONTEXT_MAX_CHARS=1400
 SUGGESTION_USER_MESSAGE_MAX_CHARS=300
 ```
@@ -245,9 +241,9 @@ MEMORY_SUMMARY_KEEP_RECENT_ITEMS
 <= CHAT_CONTEXT_RECENT_LIMIT
 ```
 
-摘要模型的 `MEMORY_LLM_API_KEY`、`MEMORY_LLM_BASE_URL` 和
-`MEMORY_LLM_MODEL` 逐项留空时，分别使用对应的主 `LLM_*` 配置。模型客户端
-采用延迟初始化，因此未达到摘要阈值时不会创建摘要模型客户端。
+用户设置中的默认模型供 Chatbot 协调 Agent 使用；正式解读、追问建议、记忆摘要
+可以分别指定模型，留空时继承该用户的默认模型。四个角色共用用户保存的 Base URL
+和 API Key。服务端环境变量只控制上下文窗口、摘要阈值等运行策略。
 
 每次模型生成和工具调用后的继续生成都会占用 turn。一次普通业务工具调用通常
 至少需要“模型选择工具”和“模型根据工具结果回答”两个阶段，因此默认使用 6。
@@ -285,8 +281,8 @@ MEMORY_SUMMARY_KEEP_RECENT_ITEMS
 }
 ```
 
-所有 `/chat/sessions` 接口都需要 `X-User-ID`。会话、消息、卦例关联和工具读取
-均按该用户过滤；其他用户访问同一 ID 时统一返回 404。
+所有 `/chat/sessions` 接口都要求注册登录和有效 LLM 设置。会话、消息、卦例关联
+和工具读取均按 Cookie 对应用户过滤；其他用户访问同一 ID 时统一返回 404。
 
 ### 起卦方式
 
@@ -379,6 +375,7 @@ curl http://127.0.0.1:8022/divinations/{id}/markdown
 - [x] **阶段 2：六十四卦数据** — 卦宫 + 卦辞爻辞全部入库
 - [x] **阶段 2.5：本地持久化** — SQLite + SQLAlchemy + Alembic
 - [x] **阶段 2.6：用户与卦例归属** — User / Divination Model、Repository、Service
+- [x] **阶段 2.7：正式认证与 BYOK** — 登录注册、HttpOnly Session、个人加密 LLM 设置、用量审计
 - [x] **阶段 3：单 Agent 解卦** — 接入 LLM，完成端到端解卦
 - [ ] **阶段 4：多 Agent 协作** — 按解卦环节拆分为多个 Agent
 - [ ] **阶段 5：RAG 增强** — 接入《增删卜易》等知识库

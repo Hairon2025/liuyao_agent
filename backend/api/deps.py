@@ -1,55 +1,43 @@
-"""FastAPI 依赖注入"""
+"""FastAPI 请求级依赖注入。"""
 from __future__ import annotations
 
-import uuid
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession
 
-from backend.config.settings import settings
-from backend.agent.chatbot_agent import LiuYaoChatbot
 from backend.agent.chat_orchestrator import ChatAgentOrchestrator
-from backend.agent.liuyao_agent import analyst
+from backend.agent.chatbot_agent import LiuYaoChatbot
+from backend.agent.liuyao_agent import LiuYaoAnalyst
 from backend.agent.memory.compactor import ChatMemoryCompactor
 from backend.agent.memory_summary_agent import MemorySummaryAgent
 from backend.agent.runtime.model import AgentModelFactory
 from backend.agent.runtime.session import AgentSessionFactory
 from backend.agent.suggested_question_agent import SuggestedQuestionAgent
+from backend.config.settings import settings
 from backend.db.session import get_db_session
 from backend.models.user import User
-from backend.repositories.chat_message import ChatMessageRepository
 from backend.repositories.agent_memory import AgentMemoryRepository
+from backend.repositories.auth import AuthRepository
+from backend.repositories.chat_message import ChatMessageRepository
 from backend.repositories.chat_session import ChatSessionRepository
 from backend.repositories.divination import DivinationRepository
+from backend.repositories.llm_usage import LLMUsageRepository
 from backend.repositories.user import UserRepository
+from backend.repositories.user_llm_settings import UserLLMSettingsRepository
+from backend.services.auth import AuthService
 from backend.services.chat import ChatService
 from backend.services.chat_divination_workflow import ChatDivinationWorkflow
 from backend.services.divination import DivinationService
+from backend.services.exceptions import (
+    UserLLMSettingsInvalidError,
+    UserLLMSettingsRequiredError,
+)
+from backend.services.llm_usage import LLMUsageRecorder
 from backend.services.user import UserService
-
-
-_agent_model_factory = AgentModelFactory()
-_suggestion_model_factory = AgentModelFactory(
-    api_key=settings.suggestion_llm_api_key or settings.llm_api_key,
-    base_url=settings.suggestion_llm_base_url or settings.llm_base_url,
-    timeout_seconds=(
-        settings.suggestion_llm_timeout_seconds
-        or settings.llm_timeout_seconds
-    ),
-    default_model=settings.suggestion_llm_model or settings.llm_model,
-)
-_suggested_question_agent = SuggestedQuestionAgent(
-    model_factory=_suggestion_model_factory,
-)
-_memory_model_factory = AgentModelFactory(
-    api_key=settings.effective_memory_llm_api_key,
-    base_url=settings.effective_memory_llm_base_url,
-    timeout_seconds=settings.effective_memory_llm_timeout_seconds,
-    default_model=settings.effective_memory_llm_model,
-)
-_memory_summary_agent = MemorySummaryAgent(
-    model_factory=_memory_model_factory,
+from backend.services.user_llm_settings import (
+    ResolvedUserLLMConfig,
+    UserLLMSettingsService,
 )
 
 
@@ -61,61 +49,134 @@ DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 def get_user_service(session: DbSession) -> UserService:
-    """组装 UserService 及其 Repository。"""
     return UserService(
         repository=UserRepository(session),
         session=session,
     )
 
 
+def get_auth_service(session: DbSession) -> AuthService:
+    return AuthService(
+        user_repository=UserRepository(session),
+        auth_repository=AuthRepository(session),
+        session=session,
+        session_days=settings.auth_session_days,
+    )
+
+
+async def get_optional_current_user(
+    request: Request,
+    service: Annotated[AuthService, Depends(get_auth_service)],
+) -> User | None:
+    return await service.authenticate(
+        request.cookies.get(settings.auth_cookie_name)
+    )
+
+
 async def get_current_user(
-    session: DbSession,
-    x_user_id: Annotated[
-        str | None,
-        Header(alias="X-User-ID"),
-    ] = None,
+    user: Annotated[User | None, Depends(get_optional_current_user)],
 ) -> User:
-    """读取 MVP 阶段的客户端身份。
-
-    `X-User-ID` 只是接入正式认证前的临时身份传输方式，不应视为安全登录态。
-    """
-    if x_user_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="缺少 X-User-ID 请求头",
-        )
-    try:
-        user_id = uuid.UUID(x_user_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="X-User-ID 格式无效",
-        ) from None
-
-    user = await UserRepository(session).get_by_id(user_id)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="当前用户不存在",
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="当前用户已停用",
+            detail="登录状态已失效，请重新登录",
         )
     return user
 
 
+async def require_registered_user(
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    if user.user_type != "registered":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该功能需要先注册或登录账号",
+        )
+    return user
+
+
+def get_user_llm_settings_service(
+    session: DbSession,
+) -> UserLLMSettingsService:
+    return UserLLMSettingsService(
+        repository=UserLLMSettingsRepository(session),
+        session=session,
+        encryption_key=settings.user_llm_encryption_key,
+        allow_private_base_urls=settings.allow_private_llm_base_urls,
+    )
+
+
+async def get_resolved_user_llm_config(
+    user: Annotated[User, Depends(require_registered_user)],
+    service: Annotated[
+        UserLLMSettingsService,
+        Depends(get_user_llm_settings_service),
+    ],
+) -> ResolvedUserLLMConfig:
+    try:
+        return await service.resolve(user.id)
+    except UserLLMSettingsRequiredError:
+        raise HTTPException(
+            status_code=status.HTTP_428_PRECONDITION_REQUIRED,
+            detail="请先在用户设置中配置 LLM API Key、Base URL 和模型",
+        ) from None
+    except UserLLMSettingsInvalidError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"用户 LLM 配置不可用：{exc}",
+        ) from None
+
+
 def get_divination_service(session: DbSession) -> DivinationService:
-    """组装 DivinationService 及其 Repository。"""
     return DivinationService(
         repository=DivinationRepository(session),
         session=session,
     )
 
 
-def get_chat_service(session: DbSession) -> ChatService:
-    """组装一次请求使用的 Agents SDK Chatbot 执行链。"""
+def _model_factory(
+    config: ResolvedUserLLMConfig,
+    model: str,
+) -> AgentModelFactory:
+    return AgentModelFactory(
+        api_key=config.api_key,
+        base_url=config.base_url,
+        timeout_seconds=config.timeout_seconds,
+        default_model=model,
+    )
+
+
+def _usage_recorder(user: User, session: AsyncSession) -> LLMUsageRecorder:
+    return LLMUsageRecorder(
+        user_id=user.id,
+        repository=LLMUsageRepository(session),
+        session=session,
+    )
+
+
+def get_user_analyst(
+    session: DbSession,
+    user: Annotated[User, Depends(require_registered_user)],
+    config: Annotated[
+        ResolvedUserLLMConfig,
+        Depends(get_resolved_user_llm_config),
+    ],
+) -> LiuYaoAnalyst:
+    return LiuYaoAnalyst(
+        model_factory=_model_factory(config, config.analyst_model),
+        usage_recorder=_usage_recorder(user, session),
+    )
+
+
+def get_chat_service(
+    session: DbSession,
+    user: Annotated[User, Depends(require_registered_user)],
+    config: Annotated[
+        ResolvedUserLLMConfig,
+        Depends(get_resolved_user_llm_config),
+    ],
+) -> ChatService:
+    """为当前用户的密钥创建一次请求级多 Agent 执行链。"""
     session_repository = ChatSessionRepository(session)
     message_repository = ChatMessageRepository(session)
     divination_repository = DivinationRepository(session)
@@ -136,15 +197,23 @@ def get_chat_service(session: DbSession) -> ChatService:
     else:
         raise RuntimeError("ChatService 需要绑定 AsyncEngine 的数据库会话")
 
-    agent_session_factory = AgentSessionFactory(
-        engine=sdk_engine,
-        recent_limit=settings.chat_context_recent_limit,
-        memory_enabled=True,
+    usage = _usage_recorder(user, session)
+    analyst = LiuYaoAnalyst(
+        model_factory=_model_factory(config, config.analyst_model),
+        usage_recorder=usage,
+    )
+    suggested = SuggestedQuestionAgent(
+        model_factory=_model_factory(config, config.suggestion_model),
+        usage_recorder=usage,
+    )
+    memory_summary = MemorySummaryAgent(
+        model_factory=_model_factory(config, config.memory_model),
+        usage_recorder=usage,
     )
     memory_compactor = ChatMemoryCompactor(
         session_repository=session_repository,
         memory_repository=AgentMemoryRepository(session),
-        summary_agent=_memory_summary_agent,
+        summary_agent=memory_summary,
         session=session,
         trigger_items=settings.memory_summary_trigger_items,
         keep_recent_items=settings.memory_summary_keep_recent_items,
@@ -152,8 +221,9 @@ def get_chat_service(session: DbSession) -> ChatService:
         context_recent_limit=settings.chat_context_recent_limit,
     )
     coordinator = LiuYaoChatbot(
-        model_factory=_agent_model_factory,
+        model_factory=_model_factory(config, config.model),
         max_turns=settings.chat_max_steps,
+        usage_recorder=usage,
     )
     chatbot = ChatAgentOrchestrator(
         coordinator=coordinator,
@@ -165,10 +235,14 @@ def get_chat_service(session: DbSession) -> ChatService:
         message_repository=message_repository,
         divination_repository=divination_repository,
         chatbot=chatbot,
-        agent_session_factory=agent_session_factory,
+        agent_session_factory=AgentSessionFactory(
+            engine=sdk_engine,
+            recent_limit=settings.chat_context_recent_limit,
+            memory_enabled=True,
+        ),
         divination_service=divination_service,
         chat_divination_workflow=workflow,
         session=session,
-        suggested_question_agent=_suggested_question_agent,
+        suggested_question_agent=suggested,
         memory_compactor=memory_compactor,
     )

@@ -73,10 +73,40 @@ export interface MarkdownResponse {
 export interface UserResponse {
   id: string;
   user_type: "guest" | "registered";
+  username: string | null;
   display_name: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AuthResponse {
+  user: UserResponse;
+}
+
+export interface UserLLMSettings {
+  base_url: string;
+  api_key_configured: boolean;
+  api_key_last4: string;
+  model: string;
+  analyst_model: string | null;
+  suggestion_model: string | null;
+  memory_model: string | null;
+  timeout_seconds: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface UserLLMSettingsInput {
+  base_url: string;
+  api_key?: string;
+  model: string;
+  analyst_model?: string | null;
+  suggestion_model?: string | null;
+  memory_model?: string | null;
+  timeout_seconds?: number;
 }
 
 export type ChatSessionStatus = "active" | "archived";

@@ -42,11 +42,11 @@ def test_chat_session_crud_and_ownership(client):
     )
     assert blocked.status_code == 409
 
-    other = client.post("/users/guests", json={}).json()["id"]
-    original_user = client.headers["X-User-ID"]
-    client.headers["X-User-ID"] = other
-    assert client.get(f"/chat/sessions/{session_id}").status_code == 404
-    client.headers["X-User-ID"] = original_user
+    original_token = client.cookies.get("liuyao_session")
+    client.cookies.delete("liuyao_session")
+    client.post("/auth/guests", json={})
+    assert client.get(f"/chat/sessions/{session_id}").status_code == 403
+    client.cookies.set("liuyao_session", original_token)
 
     deleted = client.delete(f"/chat/sessions/{session_id}")
     assert deleted.status_code == 204

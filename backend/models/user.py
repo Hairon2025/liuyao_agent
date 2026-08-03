@@ -13,6 +13,9 @@ from backend.db.base import Base
 if TYPE_CHECKING:
     from backend.models.chat_session import ChatSession
     from backend.models.divination import Divination
+    from backend.models.auth import AuthSession, UserCredential
+    from backend.models.llm_usage import LLMUsageRecord
+    from backend.models.user_llm_settings import UserLLMSettings
 
 
 def utc_now() -> datetime:
@@ -23,7 +26,7 @@ def utc_now() -> datetime:
 class User(Base):
     """系统用户。
 
-    第一阶段只创建 guest 用户；registered 类型为后续登录注册预留。
+    guest 没有用户名和密码；注册时在原记录上升级，保留已有卦例与会话。
     """
 
     __tablename__ = "users"
@@ -45,6 +48,13 @@ class User(Base):
         default="guest",
         index=True,
     )
+    username: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    username_normalized: Mapped[str | None] = mapped_column(
+        String(32),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
     display_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -62,12 +72,38 @@ class User(Base):
         default=utc_now,
         onupdate=utc_now,
     )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     divinations: Mapped[list["Divination"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    credential: Mapped["UserCredential | None"] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    auth_sessions: Mapped[list["AuthSession"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    llm_settings: Mapped["UserLLMSettings | None"] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    llm_usage_records: Mapped[list["LLMUsageRecord"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,

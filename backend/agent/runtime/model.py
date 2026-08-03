@@ -39,6 +39,14 @@ class AgentModelFactory:
             buffer_streamed_tool_calls=True,
         )
 
+    @property
+    def default_model(self) -> str:
+        return self._default_model
+
+    @property
+    def base_url(self) -> str:
+        return self._base_url
+
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
             self._client = AsyncOpenAI(

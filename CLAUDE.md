@@ -114,7 +114,7 @@ liuyao_agent/
 ```bash
 # 安装依赖
 pip install -r backend/requirements.txt
-cp backend/.env.sample backend/.env        # 编辑 .env 填入 LLM_API_KEY 等
+cp backend/.env.sample backend/.env        # 生产环境设置 USER_LLM_ENCRYPTION_KEY
 
 # 应用数据库迁移
 python -m alembic -c backend/alembic.ini upgrade head
@@ -140,7 +140,7 @@ python -m pytest backend/tests -x --tb=short                    # 遇错即停 +
 ```bash
 cd frontend
 npm install
-npm run dev      # 默认连 http://127.0.0.1:8022
+npm run dev      # 默认连 http://localhost:8022
 ```
 
 如后端部署在其他地址，复制 `frontend/.env.example` 为 `frontend/.env.local`，并修改 `NEXT_PUBLIC_API_BASE_URL`。
@@ -152,9 +152,14 @@ npm run dev      # 默认连 http://127.0.0.1:8022
 | 方法 | 路径 | 功能 |
 |---|---|---|
 | `GET` | `/health` | 健康检查 |
-| `POST` | `/users/guests` | 创建匿名用户 |
-| `GET` | `/users/{id}` | 查询用户 |
-| `PATCH` | `/users/{id}` | 更新用户昵称 |
+| `POST` | `/auth/guests` | 创建游客 Session |
+| `POST` | `/auth/register` | 游客原地升级为注册用户 |
+| `POST` | `/auth/login` | 用户名密码登录 |
+| `POST` | `/auth/logout` | 注销当前 Session |
+| `GET` | `/auth/me` | 查询当前身份 |
+| `GET/PATCH` | `/users/me` | 查询或更新当前资料 |
+| `GET/PUT/DELETE` | `/users/me/llm-settings` | 管理个人 LLM 设置 |
+| `POST` | `/users/me/llm-settings/test` | 测试已保存模型连接 |
 | `POST` | `/divinations` | 起卦 + 排盘并保存数据库 |
 | `GET` | `/divinations` | 列出当前用户的卦例 ID |
 | `GET` | `/divinations/{id}` | 查询当前用户的一条卦例 |
@@ -166,8 +171,9 @@ npm run dev      # 默认连 http://127.0.0.1:8022
 | `POST` | `/chat/sessions/{id}/messages/stream` | SSE 执行一轮 Chatbot 对话 |
 | `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 异步生成并缓存结构化追问 |
 
-所有 `/divinations` 与 `/chat/sessions` 请求必须携带 MVP 临时身份请求头
-`X-User-ID`；Repository 查询必须同时限定资源 ID 和用户 ID。
+身份通过 HttpOnly Cookie 的服务端 Session 传递；Repository 查询必须同时限定资源
+ID 和用户 ID。游客可起卦、排盘和查看自己的历史；AI 解读与 Chatbot 要求注册登录
+且已配置个人 LLM。用户 API Key 只能以 AES-GCM 密文入库，不得写入日志或响应。
 
 > 与 README 的对应章节保持同步；新增 / 删除路由时同时改两处。
 

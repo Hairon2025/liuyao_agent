@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from backend.agent.tools import (
 )
 from backend.schema.agent import ChatEvent, ChatEventType, ChatWorkflowState
 from backend.utils.logger import logger
+from backend.services.llm_usage import LLMUsageRecorder
 
 _PROMPT_FILE = Path(__file__).parent / "prompt" / "liuyao_chatbot.txt"
 
@@ -40,6 +42,7 @@ class LiuYaoChatbot:
         model_factory: AgentModelFactory | None = None,
         max_turns: int = 6,
         stream_adapter: AgentStreamAdapter | None = None,
+        usage_recorder: LLMUsageRecorder | None = None,
     ):
         if max_turns < 1:
             raise ValueError("max_turns 必须大于等于 1")
@@ -47,6 +50,7 @@ class LiuYaoChatbot:
         self._model_factory = model_factory or AgentModelFactory()
         self._max_turns = max_turns
         self._stream_adapter = stream_adapter or AgentStreamAdapter()
+        self._usage_recorder = usage_recorder
 
     def build_agent(
         self,
@@ -114,6 +118,12 @@ class LiuYaoChatbot:
         model: str | None = None,
     ) -> AsyncIterator[ChatEvent]:
         """运行一轮标准 Agent 工具调用循环，并输出项目统一事件。"""
+        started = time.perf_counter()
+        selected_model = model or getattr(
+            self._model_factory,
+            "default_model",
+            "unknown",
+        )
         try:
             result = Runner.run_streamed(
                 self.build_agent(model),
@@ -128,7 +138,19 @@ class LiuYaoChatbot:
             )
             async for event in self._stream_adapter.stream(result, context):
                 yield event
+            await self._record_usage(
+                started,
+                selected_model,
+                "completed",
+                usage=result.context_wrapper.usage,
+            )
         except MaxTurnsExceeded:
+            await self._record_usage(
+                started,
+                selected_model,
+                "failed",
+                error_code="max_turns_exceeded",
+            )
             yield ChatEvent(
                 event_type=ChatEventType.ERROR,
                 content="本轮工具调用次数已达到上限，请补充或简化问题后重试。",
@@ -137,9 +159,36 @@ class LiuYaoChatbot:
             )
         except Exception:
             logger.exception("Agents SDK Chatbot 执行失败")
+            await self._record_usage(
+                started,
+                selected_model,
+                "failed",
+                error_code="agent_execution_error",
+            )
             yield ChatEvent(
                 event_type=ChatEventType.ERROR,
                 content="Agent 执行失败。",
                 error_code="agent_execution_error",
                 retryable=True,
             )
+
+    async def _record_usage(
+        self,
+        started: float,
+        model: str,
+        status: str,
+        *,
+        usage=None,
+        error_code: str | None = None,
+    ) -> None:
+        if self._usage_recorder is None:
+            return
+        await self._usage_recorder.record(
+            agent_role="chatbot",
+            model=model,
+            base_url=getattr(self._model_factory, "base_url", ""),
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            status=status,
+            usage=usage,
+            error_code=error_code,
+        )

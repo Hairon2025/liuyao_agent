@@ -1,110 +1,145 @@
-"""User 路由测试。"""
+"""认证、当前用户资料和用户 LLM 设置路由测试。"""
 from __future__ import annotations
 
-import uuid
-from typing import Any
+
+def test_current_registered_user_and_profile_update(client):
+    current = client.get("/auth/me")
+    assert current.status_code == 200
+    assert current.json()["user"]["username"] == "test_user"
+    assert current.json()["user"]["user_type"] == "registered"
+
+    updated = client.patch("/users/me", json={"display_name": "  问卦者  "})
+    assert updated.status_code == 200
+    assert updated.json()["display_name"] == "问卦者"
 
 
-def _create_guest(client: Any, display_name: str | None = None) -> dict:
-    payload = {} if display_name is None else {"display_name": display_name}
-    response = client.post("/users/guests", json=payload)
-    assert response.status_code == 201, response.text
-    return response.json()
+def test_guest_registration_upgrades_same_user_and_preserves_data(client):
+    assert client.post("/auth/logout").status_code == 204
+    guest = client.post("/auth/guests", json={"display_name": "游客"})
+    guest_id = guest.json()["user"]["id"]
+    created = client.post(
+        "/divinations",
+        json={
+            "method": "manual",
+            "question": "注册前的卦",
+            "numbers": [2, 1, 2, 2, 1, 2],
+        },
+    )
+    assert created.status_code == 200
+
+    registered = client.post(
+        "/auth/register",
+        json={
+            "username": "upgraded_user",
+            "password": "password123",
+        },
+    )
+    assert registered.status_code == 201
+    assert registered.json()["user"]["id"] == guest_id
+    assert registered.json()["user"]["user_type"] == "registered"
+    assert created.json()["divination_id"] in client.get("/divinations").json()
 
 
-class TestCreateGuestUser:
-    """POST /users/guests"""
+def test_login_logout_and_invalid_password(client):
+    assert client.post("/auth/logout").status_code == 204
+    assert client.get("/auth/me").status_code == 401
+    invalid = client.post(
+        "/auth/login",
+        json={"username": "test_user", "password": "wrong-password"},
+    )
+    assert invalid.status_code == 401
 
-    def test_create_guest_generates_server_side_id(self, client: Any):
-        body = _create_guest(client, "  问卦者  ")
-
-        assert uuid.UUID(body["id"])
-        assert body["user_type"] == "guest"
-        assert body["display_name"] == "问卦者"
-        assert body["is_active"] is True
-        assert body["created_at"]
-        assert body["updated_at"]
-
-    def test_create_guest_allows_missing_display_name(self, client: Any):
-        body = _create_guest(client)
-        assert body["display_name"] is None
-
-    def test_create_guest_rejects_blank_display_name(self, client: Any):
-        response = client.post(
-            "/users/guests",
-            json={"display_name": "   "},
-        )
-        assert response.status_code == 422
-        assert "昵称不能只包含空白字符" in response.text
-
-    def test_create_guest_rejects_client_supplied_identity(self, client: Any):
-        response = client.post(
-            "/users/guests",
-            json={"id": str(uuid.uuid4()), "user_type": "registered"},
-        )
-        assert response.status_code == 422
+    logged_in = client.post(
+        "/auth/login",
+        json={"username": "TEST_USER", "password": "password123"},
+    )
+    assert logged_in.status_code == 200
+    assert logged_in.json()["user"]["username"] == "test_user"
 
 
-class TestGetUser:
-    """GET /users/{user_id}"""
-
-    def test_get_existing_user(self, client: Any):
-        created = _create_guest(client, "测试用户")
-
-        response = client.get(f"/users/{created['id']}")
-
-        assert response.status_code == 200
-        assert response.json() == created
-
-    def test_get_missing_user_returns_404(self, client: Any):
-        missing_id = uuid.uuid4()
-        response = client.get(f"/users/{missing_id}")
-
-        assert response.status_code == 404
-        assert str(missing_id) in response.json()["detail"]
-
-    def test_get_invalid_uuid_returns_422(self, client: Any):
-        response = client.get("/users/not-a-uuid")
-        assert response.status_code == 422
+def test_duplicate_username_is_rejected(client):
+    client.post("/auth/logout")
+    client.post("/auth/guests", json={})
+    duplicate = client.post(
+        "/auth/register",
+        json={"username": "TEST_USER", "password": "password123"},
+    )
+    assert duplicate.status_code == 409
 
 
-class TestUpdateUser:
-    """PATCH /users/{user_id}"""
+def test_registration_validates_username_and_password(client):
+    client.post("/auth/logout")
+    client.post("/auth/guests", json={})
+    invalid_name = client.post(
+        "/auth/register",
+        json={"username": "中文用户名", "password": "password123"},
+    )
+    assert invalid_name.status_code == 422
+    short_password = client.post(
+        "/auth/register",
+        json={"username": "valid_name", "password": "short"},
+    )
+    assert short_password.status_code == 422
 
-    def test_update_display_name(self, client: Any):
-        created = _create_guest(client)
 
-        response = client.patch(
-            f"/users/{created['id']}",
-            json={"display_name": "  新昵称  "},
-        )
+def test_guest_cannot_use_ai_or_manage_llm_settings(client):
+    client.post("/auth/logout")
+    client.post("/auth/guests", json={})
+    assert client.get("/users/me/llm-settings").status_code == 403
+    assert client.post("/chat/sessions", json={}).status_code == 403
 
-        assert response.status_code == 200
-        assert response.json()["display_name"] == "新昵称"
+    divination = client.post(
+        "/divinations",
+        json={
+            "method": "manual",
+            "question": "游客排盘",
+            "numbers": [2, 1, 2, 2, 1, 2],
+            "generate_markdown": True,
+        },
+    )
+    assert divination.status_code == 200
+    divination_id = divination.json()["divination_id"]
+    assert client.post(
+        f"/divinations/{divination_id}/interpret"
+    ).status_code == 403
 
-    def test_clear_display_name_with_null(self, client: Any):
-        created = _create_guest(client, "原昵称")
 
-        response = client.patch(
-            f"/users/{created['id']}",
-            json={"display_name": None},
-        )
+def test_registered_user_without_llm_settings_is_prompted_to_configure(client):
+    assert client.delete("/users/me/llm-settings").status_code == 204
+    assert client.get("/users/me/llm-settings").json() is None
+    response = client.post("/chat/sessions", json={})
+    assert response.status_code == 428
+    assert "配置 LLM" in response.json()["detail"]
 
-        assert response.status_code == 200
-        assert response.json()["display_name"] is None
 
-    def test_empty_update_returns_400(self, client: Any):
-        created = _create_guest(client)
-        response = client.patch(f"/users/{created['id']}", json={})
+def test_llm_settings_never_return_api_key_and_can_preserve_existing_key(client):
+    current = client.get("/users/me/llm-settings")
+    assert current.status_code == 200
+    assert current.json()["api_key_last4"] == "-key"
+    assert "api_key" not in current.json()
+    assert "ciphertext" not in current.text
 
-        assert response.status_code == 400
-        assert "至少提供一个" in response.json()["detail"]
+    updated = client.put(
+        "/users/me/llm-settings",
+        json={
+            "base_url": "https://another.example.com/v1",
+            "model": "another-model",
+            "memory_model": "cheap-memory",
+        },
+    )
+    assert updated.status_code == 200
+    assert updated.json()["api_key_last4"] == "-key"
+    assert updated.json()["memory_model"] == "cheap-memory"
 
-    def test_update_missing_user_returns_404(self, client: Any):
-        missing_id = uuid.uuid4()
-        response = client.patch(
-            f"/users/{missing_id}",
-            json={"display_name": "不存在"},
-        )
 
-        assert response.status_code == 404
+def test_llm_settings_reject_private_base_url(client):
+    response = client.put(
+        "/users/me/llm-settings",
+        json={
+            "base_url": "http://127.0.0.1:11434/v1",
+            "api_key": "local-key",
+            "model": "local-model",
+        },
+    )
+    assert response.status_code == 400
+    assert "Base URL" in response.json()["detail"]

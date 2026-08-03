@@ -456,12 +456,12 @@ class TestInterpretDivination:
         divination_id = created.json()["divination_id"]
         created_divination_ids.append(divination_id)
 
-        async def fake_interpret(markdown_content: str) -> str:
+        async def fake_interpret(_self, markdown_content: str) -> str:
             assert "离为火" in markdown_content
             return "**数据库解读成功。**"
 
         monkeypatch.setattr(
-            divination_routes.analyst,
+            divination_routes.LiuYaoAnalyst,
             "interpret",
             fake_interpret,
         )
@@ -510,12 +510,12 @@ class TestInterpretDivinationStream:
         """文本逐块发送，正常完成后发送 [DONE] 并保存完整解读。"""
         divination_id = self._make_with_markdown(client, created_divination_ids)
 
-        async def fake_interpret_stream(_: str):
+        async def fake_interpret_stream(_self, _: str):
             yield "# 总论\n"
             yield "**整体平稳。**"
 
         monkeypatch.setattr(
-            divination_routes.analyst,
+            divination_routes.LiuYaoAnalyst,
             "interpret_stream",
             fake_interpret_stream,
         )
@@ -550,12 +550,12 @@ class TestInterpretDivinationStream:
         """生成中途失败时发送错误消息，不发送 [DONE]，也不保存半截内容。"""
         divination_id = self._make_with_markdown(client, created_divination_ids)
 
-        async def failing_interpret_stream(_: str):
+        async def failing_interpret_stream(_self, _: str):
             yield "已经生成的部分"
             raise RuntimeError("模型连接中断")
 
         monkeypatch.setattr(
-            divination_routes.analyst,
+            divination_routes.LiuYaoAnalyst,
             "interpret_stream",
             failing_interpret_stream,
         )
@@ -581,13 +581,13 @@ class TestInterpretDivinationStream:
 
 
 class TestDivinationOwnership:
-    """所有卦例接口必须按 X-User-ID 隔离数据。"""
+    """所有卦例接口必须按服务端登录 Session 隔离数据。"""
 
     def test_other_user_cannot_read_list_or_delete_record(
         self,
         client: Any,
     ):
-        owner_id = client.headers["X-User-ID"]
+        owner_token = client.cookies.get("liuyao_session")
         created = client.post(
             "/divinations",
             json={
@@ -599,40 +599,30 @@ class TestDivinationOwnership:
         assert created.status_code == 200
         divination_id = created.json()["divination_id"]
 
-        other_user = client.post("/users/guests", json={}).json()
-        other_headers = {"X-User-ID": other_user["id"]}
+        client.cookies.delete("liuyao_session")
+        client.post("/auth/guests", json={})
 
-        assert client.get(
-            f"/divinations/{divination_id}",
-            headers=other_headers,
-        ).status_code == 404
+        assert client.get(f"/divinations/{divination_id}").status_code == 404
         assert divination_id not in client.get(
             "/divinations",
-            headers=other_headers,
         ).json()
-        assert client.delete(
-            f"/divinations/{divination_id}",
-            headers=other_headers,
-        ).status_code == 404
+        assert client.delete(f"/divinations/{divination_id}").status_code == 404
 
         # 非所有者的删除没有影响原始记录。
-        owner_response = client.get(
-            f"/divinations/{divination_id}",
-            headers={"X-User-ID": owner_id},
-        )
+        client.cookies.set("liuyao_session", owner_token)
+        owner_response = client.get(f"/divinations/{divination_id}")
         assert owner_response.status_code == 200
 
-    def test_missing_or_invalid_user_header_returns_401(self, client: Any):
-        user_id = client.headers.pop("X-User-ID")
+    def test_missing_or_invalid_session_cookie_returns_401(self, client: Any):
+        token = client.cookies.get("liuyao_session")
         try:
+            client.cookies.delete("liuyao_session")
             assert client.get("/divinations").status_code == 401
-            invalid = client.get(
-                "/divinations",
-                headers={"X-User-ID": "not-a-uuid"},
-            )
+            client.cookies.set("liuyao_session", "invalid-token")
+            invalid = client.get("/divinations")
             assert invalid.status_code == 401
         finally:
-            client.headers["X-User-ID"] = user_id
+            client.cookies.set("liuyao_session", token)
 
 
 # ============================================================

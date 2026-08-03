@@ -178,6 +178,47 @@ button:disabled {
   animation: pulse 1.2s ease-in-out infinite;
 }
 
+.topbar-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.account-trigger {
+  max-width: 150px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px 6px 7px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.64);
+  color: var(--ink-soft);
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-trigger > span {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--paper-deep);
+  color: var(--cinnabar);
+  font-family: "Noto Serif SC", serif;
+}
+
+.account-trigger.registered > span {
+  background: var(--jade);
+  color: var(--white);
+}
+
 .workspace {
   min-height: calc(100vh - 124px);
   display: grid;
@@ -2595,6 +2636,222 @@ fieldset {
   display: none;
 }
 
+.account-dialog-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(37, 35, 31, 0.46);
+  backdrop-filter: blur(6px);
+}
+
+.account-dialog {
+  position: relative;
+  width: min(640px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: auto;
+  padding: 34px 38px 30px;
+  border: 1px solid rgba(179, 138, 79, 0.38);
+  background:
+    linear-gradient(rgba(250, 248, 242, 0.96), rgba(250, 248, 242, 0.98)),
+    var(--paper-light);
+  box-shadow: 0 28px 90px rgba(40, 31, 21, 0.24);
+}
+
+.account-dialog::before {
+  content: "易";
+  position: absolute;
+  top: -18px;
+  right: 36px;
+  color: rgba(166, 56, 45, 0.045);
+  font-size: 132px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.account-dialog-close {
+  position: absolute;
+  z-index: 1;
+  top: 13px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8f877c;
+  font-family: system-ui, sans-serif;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.account-dialog-heading {
+  position: relative;
+  padding-right: 58px;
+}
+
+.account-dialog-heading > span {
+  color: var(--cinnabar);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+}
+
+.account-dialog-heading h2 {
+  margin: 7px 0 8px;
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.account-dialog-heading p {
+  max-width: 500px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.account-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 28px 0 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-tabs button {
+  position: relative;
+  padding: 10px;
+  border: 0;
+  background: transparent;
+  color: #8d857b;
+  font-size: 12px;
+}
+
+.account-tabs button.active {
+  color: var(--cinnabar);
+}
+
+.account-tabs button.active::after {
+  content: "";
+  position: absolute;
+  right: 22%;
+  bottom: -1px;
+  left: 22%;
+  height: 2px;
+  background: var(--cinnabar);
+}
+
+.account-form {
+  position: relative;
+  display: grid;
+  gap: 15px;
+  margin-top: 26px;
+}
+
+.llm-settings-form {
+  grid-template-columns: 1fr 1fr;
+}
+
+.account-form label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.account-form label > span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.account-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(255, 253, 248, 0.78);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.account-form input:focus {
+  border-color: rgba(166, 56, 45, 0.7);
+  box-shadow: 0 0 0 3px rgba(166, 56, 45, 0.07);
+}
+
+.account-form .full-row {
+  grid-column: 1 / -1;
+}
+
+.account-primary,
+.account-secondary {
+  min-height: 41px;
+  padding: 10px 18px;
+  border: 1px solid var(--cinnabar);
+  background: var(--cinnabar);
+  color: var(--white);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.account-secondary {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+}
+
+.account-form-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.account-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: #8f877c;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+}
+
+.account-dialog-footer button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cinnabar);
+  font-size: 10px;
+}
+
+.account-empty {
+  margin-top: 26px;
+  padding: 24px;
+  border: 1px dashed var(--line);
+  text-align: center;
+}
+
+.account-empty p {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.account-empty button {
+  padding: 9px 18px;
+  border: 0;
+  background: var(--cinnabar);
+  color: white;
+  font-size: 11px;
+}
+
 .site-footer {
   min-height: 46px;
   display: flex;
@@ -2681,8 +2938,9 @@ fieldset {
 @media (max-width: 760px) {
   .topbar {
     height: 66px;
-    grid-template-columns: 1fr auto;
-    padding: 0 18px;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    padding: 0 12px;
   }
 
   .brand-seal {
@@ -2695,18 +2953,68 @@ fieldset {
     font-size: 17px;
   }
 
-  .brand small,
+  .brand > span:last-child,
   .api-status {
     display: none;
   }
 
   .topbar nav {
+    justify-self: center;
     gap: 12px;
   }
 
   .topbar nav button {
     font-size: 10px;
     letter-spacing: 0.05em;
+  }
+
+  .topbar-actions {
+    gap: 0;
+  }
+
+  .account-trigger {
+    max-width: 38px;
+    padding: 6px;
+    border: 0;
+    background: transparent;
+    font-size: 0;
+  }
+
+  .account-trigger > span {
+    width: 27px;
+    height: 27px;
+    flex-basis: 27px;
+    font-size: 11px;
+  }
+
+  .account-dialog-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .account-dialog {
+    width: 100%;
+    max-height: calc(100vh - 28px);
+    padding: 28px 20px 24px;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+  }
+
+  .account-dialog-heading h2 {
+    font-size: 22px;
+  }
+
+  .llm-settings-form {
+    grid-template-columns: 1fr;
+  }
+
+  .account-form .full-row {
+    grid-column: auto;
+  }
+
+  .account-form-actions {
+    display: grid;
   }
 
   .workspace {

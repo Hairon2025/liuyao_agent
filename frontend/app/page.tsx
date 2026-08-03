@@ -12,6 +12,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DEFAULT_API_BASE, liuyaoApi } from "./api";
 import {
+  AccountDialog,
+  type AccountDialogMode,
+} from "./components/AccountDialog";
+import {
   ChatView,
   type ChatLaunchRequest,
 } from "./components/chat/ChatView";
@@ -20,6 +24,8 @@ import type {
   HexagramInfo,
   LineInfo,
   QiguaMethod,
+  UserLLMSettings,
+  UserResponse,
 } from "./types";
 
 const METHOD_OPTIONS: Array<{
@@ -74,8 +80,22 @@ type AppView = "workspace" | "chat" | "history";
 const DEFAULT_DISCLAIMER =
   "本结果仅供文化娱乐参考，不构成任何人生决策依据。";
 
-function userStorageKey(apiBase: string) {
-  return `liuyao-user-id:${apiBase.trim().replace(/\/+$/, "")}`;
+function alignLoopbackApiHost(value: string, frontendHost: string) {
+  try {
+    const url = new URL(value);
+    const loopbackHosts = new Set(["localhost", "127.0.0.1"]);
+    if (
+      loopbackHosts.has(frontendHost) &&
+      loopbackHosts.has(url.hostname) &&
+      url.hostname !== frontendHost
+    ) {
+      url.hostname = frontendHost;
+      return url.toString().replace(/\/$/, "");
+    }
+  } catch {
+    // 非标准地址交给原有 API 错误提示处理。
+  }
+  return value;
 }
 
 function withInterpretation(
@@ -335,12 +355,17 @@ export default function Home() {
   const interpretationAbortRef = useRef<AbortController | null>(null);
   const identityRequestRef = useRef<{
     apiBase: string;
-    promise: Promise<string>;
+    promise: Promise<UserResponse>;
   } | null>(null);
   const [apiStatus, setApiStatus] = useState<"checking" | "online" | "offline">(
     "checking",
   );
   const [userId, setUserId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserResponse | null>(null);
+  const [llmSettings, setLLMSettings] = useState<UserLLMSettings | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [accountMode, setAccountMode] =
+    useState<AccountDialogMode>("login");
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [apiDraft, setApiDraft] = useState(DEFAULT_API_BASE);
   const [toast, setToast] = useState("");
@@ -369,39 +394,38 @@ export default function Home() {
 
   const ensureGuestIdentity = useCallback(async (base: string) => {
     setUserId(null);
+    setCurrentUser(null);
+    setLLMSettings(null);
     const normalizedBase = base.trim().replace(/\/+$/, "");
     let request = identityRequestRef.current;
 
     if (!request || request.apiBase !== normalizedBase) {
       const promise = (async () => {
-        const storageKey = userStorageKey(normalizedBase);
-        const savedUserId = window.localStorage.getItem(storageKey);
-        if (savedUserId) {
-          try {
-            const existing = await liuyaoApi.getUser(
-              normalizedBase,
-              savedUserId,
-            );
-            if (existing.is_active) return existing.id;
-          } catch {
-            // 数据库更换或访客已失效时，自动创建新的访客身份。
-          }
+        try {
+          return (await liuyaoApi.getCurrentUser(normalizedBase)).user;
+        } catch {
+          // Cookie 不存在或已过期时，创建新的匿名 Session。
+          return (await liuyaoApi.createGuest(normalizedBase)).user;
         }
-
-        const guest = await liuyaoApi.createGuest(normalizedBase);
-        window.localStorage.setItem(storageKey, guest.id);
-        return guest.id;
       })();
       request = { apiBase: normalizedBase, promise };
       identityRequestRef.current = request;
     }
 
     try {
-      const resolvedUserId = await request.promise;
+      const resolvedUser = await request.promise;
       if (identityRequestRef.current === request) {
-        setUserId(resolvedUserId);
+        setCurrentUser(resolvedUser);
+        setUserId(resolvedUser.id);
+        if (resolvedUser.user_type === "registered") {
+          try {
+            setLLMSettings(await liuyaoApi.getLLMSettings(normalizedBase));
+          } catch {
+            setLLMSettings(null);
+          }
+        }
       }
-      return resolvedUserId;
+      return resolvedUser.id;
     } finally {
       if (identityRequestRef.current === request) {
         identityRequestRef.current = null;
@@ -415,7 +439,13 @@ export default function Home() {
       await Promise.resolve();
       if (cancelled) return;
       const saved = window.localStorage.getItem("liuyao-api-base");
-      const base = saved || DEFAULT_API_BASE;
+      const base = alignLoopbackApiHost(
+        saved || DEFAULT_API_BASE,
+        window.location.hostname,
+      );
+      if (saved && saved !== base) {
+        window.localStorage.setItem("liuyao-api-base", base);
+      }
       setApiBase(base);
       setApiDraft(base);
       void checkApi(base);
@@ -462,6 +492,36 @@ export default function Home() {
       setHistoryLoading(false);
     }
   }, [apiBase, showToast, userId]);
+
+  function requireAIReady() {
+    if (!currentUser || currentUser.user_type !== "registered") {
+      setAccountMode("login");
+      setAccountOpen(true);
+      showToast("AI 解读与问易需要先登录账号");
+      return false;
+    }
+    if (!llmSettings) {
+      setAccountMode("settings");
+      setAccountOpen(true);
+      showToast("请先配置个人 LLM 服务");
+      return false;
+    }
+    return true;
+  }
+
+  function openChat() {
+    if (!requireAIReady()) return;
+    setView("chat");
+  }
+
+  function handleIdentityChange(user: UserResponse) {
+    setCurrentUser(user);
+    setUserId(user.id);
+    if (user.user_type === "guest") {
+      setLLMSettings(null);
+      setView("workspace");
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -551,6 +611,7 @@ export default function Home() {
       showToast("访客身份正在初始化，请稍候");
       return;
     }
+    if (!requireAIReady()) return;
 
     const divinationId = result.divination_id;
     const controller = new AbortController();
@@ -658,6 +719,7 @@ export default function Home() {
   }
 
   function openChatForDivination(record: DivinationResponse) {
+    if (!requireAIReady()) return;
     setChatLaunch({
       token: Date.now(),
       divinationId: record.divination_id,
@@ -702,7 +764,10 @@ export default function Home() {
 
   function saveApiBase(event: React.FormEvent) {
     event.preventDefault();
-    const next = apiDraft.trim().replace(/\/+$/, "");
+    const next = alignLoopbackApiHost(
+      apiDraft.trim().replace(/\/+$/, ""),
+      window.location.hostname,
+    );
     if (!next) return;
     window.localStorage.setItem("liuyao-api-base", next);
     setApiBase(next);
@@ -742,7 +807,7 @@ export default function Home() {
           <button
             type="button"
             className={view === "chat" ? "active" : ""}
-            onClick={() => setView("chat")}
+            onClick={openChat}
           >
             问易
           </button>
@@ -755,13 +820,32 @@ export default function Home() {
           </button>
         </nav>
 
-        <div className={`api-status ${apiStatus}`}>
-          <i />
-          {apiStatus === "online"
-            ? "服务已连接"
-            : apiStatus === "checking"
-              ? "正在连接"
-              : "服务未连接"}
+        <div className="topbar-actions">
+          <div className={`api-status ${apiStatus}`}>
+            <i />
+            {apiStatus === "online"
+              ? "服务已连接"
+              : apiStatus === "checking"
+                ? "正在连接"
+                : "服务未连接"}
+          </div>
+          <button
+            type="button"
+            className={`account-trigger ${
+              currentUser?.user_type === "registered" ? "registered" : ""
+            }`}
+            onClick={() => {
+              setAccountMode(
+                currentUser?.user_type === "registered" ? "settings" : "login",
+              );
+              setAccountOpen(true);
+            }}
+          >
+            <span>{currentUser?.user_type === "registered" ? "人" : "客"}</span>
+            {currentUser?.user_type === "registered"
+              ? currentUser.display_name || currentUser.username
+              : "登录"}
+          </button>
         </div>
       </header>
 
@@ -1257,6 +1341,20 @@ export default function Home() {
           )}
         </main>
       )}
+
+      <AccountDialog
+        key={`${accountOpen}-${llmSettings?.updated_at ?? "empty"}`}
+        apiBase={apiBase}
+        open={accountOpen}
+        mode={accountMode}
+        user={currentUser}
+        settings={llmSettings}
+        onClose={() => setAccountOpen(false)}
+        onModeChange={setAccountMode}
+        onIdentityChange={handleIdentityChange}
+        onSettingsChange={setLLMSettings}
+        onNotify={showToast}
+      />
 
       <footer className="site-footer">
         <span>大衍六爻 · 传统文化数字化探索</span>

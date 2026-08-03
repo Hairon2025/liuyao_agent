@@ -5,13 +5,15 @@ import type {
   ChatSessionStatus,
   ChatSuggestionsResponse,
   DivinationResponse,
+  AuthResponse,
   MarkdownResponse,
   QiguaRequest,
-  UserResponse,
+  UserLLMSettings,
+  UserLLMSettingsInput,
 } from "./types";
 
 export const DEFAULT_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8022";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8022";
 
 function normalizeBaseUrl(value: string) {
   return value.trim().replace(/\/+$/, "");
@@ -43,6 +45,7 @@ async function request<T>(
   try {
     response = await fetch(`${normalizeBaseUrl(apiBase)}${path}`, {
       ...init,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...init?.headers,
@@ -62,7 +65,7 @@ async function request<T>(
 
 async function streamInterpretation(
   apiBase: string,
-  userId: string,
+  _userId: string,
   id: string,
   onContent: (content: string) => void,
   signal?: AbortSignal,
@@ -73,9 +76,9 @@ async function streamInterpretation(
       `${normalizeBaseUrl(apiBase)}/divinations/${id}/interpret/stream`,
       {
         method: "POST",
+        credentials: "include",
         headers: {
           Accept: "text/event-stream",
-          "X-User-ID": userId,
         },
         signal,
       },
@@ -153,7 +156,7 @@ async function streamInterpretation(
 
 async function streamChatEvents(
   apiBase: string,
-  userId: string,
+  _userId: string,
   sessionId: string,
   message: string,
   onEvent: (event: ChatEvent) => void,
@@ -165,10 +168,10 @@ async function streamChatEvents(
       `${normalizeBaseUrl(apiBase)}/chat/sessions/${sessionId}/messages/stream`,
       {
         method: "POST",
+        credentials: "include",
         headers: {
           Accept: "text/event-stream",
           "Content-Type": "application/json",
-          "X-User-ID": userId,
         },
         body: JSON.stringify({ message }),
         signal,
@@ -252,75 +255,118 @@ export const liuyaoApi = {
   },
 
   createGuest(apiBase: string) {
-    return request<UserResponse>(apiBase, "/users/guests", {
+    return request<AuthResponse>(apiBase, "/auth/guests", {
       method: "POST",
       body: JSON.stringify({}),
     });
   },
 
-  getUser(apiBase: string, userId: string) {
-    return request<UserResponse>(apiBase, `/users/${userId}`);
+  getCurrentUser(apiBase: string) {
+    return request<AuthResponse>(apiBase, "/auth/me");
   },
 
-  create(apiBase: string, userId: string, payload: QiguaRequest) {
-    return request<DivinationResponse>(apiBase, "/divinations", {
+  register(
+    apiBase: string,
+    payload: { username: string; password: string; display_name?: string },
+  ) {
+    return request<AuthResponse>(apiBase, "/auth/register", {
       method: "POST",
-      headers: { "X-User-ID": userId },
       body: JSON.stringify(payload),
     });
   },
 
-  list(apiBase: string, userId: string) {
-    return request<string[]>(apiBase, "/divinations", {
-      headers: { "X-User-ID": userId },
+  login(apiBase: string, payload: { username: string; password: string }) {
+    return request<AuthResponse>(apiBase, "/auth/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
     });
   },
 
-  get(apiBase: string, userId: string, id: string) {
-    return request<DivinationResponse>(apiBase, `/divinations/${id}`, {
-      headers: { "X-User-ID": userId },
+  logout(apiBase: string) {
+    return request<void>(apiBase, "/auth/logout", { method: "POST" });
+  },
+
+  getLLMSettings(apiBase: string) {
+    return request<UserLLMSettings | null>(
+      apiBase,
+      "/users/me/llm-settings",
+    );
+  },
+
+  saveLLMSettings(apiBase: string, payload: UserLLMSettingsInput) {
+    return request<UserLLMSettings>(apiBase, "/users/me/llm-settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
     });
   },
 
-  remove(apiBase: string, userId: string, id: string) {
+  testLLMSettings(apiBase: string) {
+    return request<{ success: boolean; message: string }>(
+      apiBase,
+      "/users/me/llm-settings/test",
+      { method: "POST" },
+    );
+  },
+
+  deleteLLMSettings(apiBase: string) {
+    return request<void>(apiBase, "/users/me/llm-settings", {
+      method: "DELETE",
+    });
+  },
+
+  create(apiBase: string, _userId: string, payload: QiguaRequest) {
+    return request<DivinationResponse>(apiBase, "/divinations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  list(apiBase: string, _userId: string) {
+    void _userId;
+    return request<string[]>(apiBase, "/divinations");
+  },
+
+  get(apiBase: string, _userId: string, id: string) {
+    return request<DivinationResponse>(apiBase, `/divinations/${id}`);
+  },
+
+  remove(apiBase: string, _userId: string, id: string) {
     return request<void>(apiBase, `/divinations/${id}`, {
       method: "DELETE",
-      headers: { "X-User-ID": userId },
     });
   },
 
-  generateMarkdown(apiBase: string, userId: string, id: string) {
+  generateMarkdown(apiBase: string, _userId: string, id: string) {
     return request<MarkdownResponse>(
       apiBase,
       `/divinations/${id}/markdown`,
       {
         method: "POST",
-        headers: { "X-User-ID": userId },
       },
     );
   },
 
-  getMarkdown(apiBase: string, userId: string, id: string) {
+  getMarkdown(apiBase: string, _userId: string, id: string) {
     return request<MarkdownResponse>(
       apiBase,
       `/divinations/${id}/markdown`,
-      { headers: { "X-User-ID": userId } },
+      {},
     );
   },
 
   interpretStream(
     apiBase: string,
-    userId: string,
+    _userId: string,
     id: string,
     onContent: (content: string) => void,
     signal?: AbortSignal,
   ) {
-    return streamInterpretation(apiBase, userId, id, onContent, signal);
+    return streamInterpretation(apiBase, _userId, id, onContent, signal);
   },
 
   createChatSession(
     apiBase: string,
-    userId: string,
+    _userId: string,
     payload: {
       title?: string;
       active_divination_id?: string;
@@ -328,35 +374,34 @@ export const liuyaoApi = {
   ) {
     return request<ChatSession>(apiBase, "/chat/sessions", {
       method: "POST",
-      headers: { "X-User-ID": userId },
       body: JSON.stringify(payload),
     });
   },
 
   listChatSessions(
     apiBase: string,
-    userId: string,
+    _userId: string,
     status?: ChatSessionStatus,
   ) {
     const query = status ? `?status=${status}` : "";
     return request<ChatSession[]>(
       apiBase,
       `/chat/sessions${query}`,
-      { headers: { "X-User-ID": userId } },
+      {},
     );
   },
 
-  getChatSession(apiBase: string, userId: string, sessionId: string) {
+  getChatSession(apiBase: string, _userId: string, sessionId: string) {
     return request<ChatSession>(
       apiBase,
       `/chat/sessions/${sessionId}`,
-      { headers: { "X-User-ID": userId } },
+      {},
     );
   },
 
   updateChatSession(
     apiBase: string,
-    userId: string,
+    _userId: string,
     sessionId: string,
     payload: {
       title?: string | null;
@@ -370,39 +415,37 @@ export const liuyaoApi = {
       `/chat/sessions/${sessionId}`,
       {
         method: "PATCH",
-        headers: { "X-User-ID": userId },
         body: JSON.stringify(payload),
       },
     );
   },
 
-  removeChatSession(apiBase: string, userId: string, sessionId: string) {
+  removeChatSession(apiBase: string, _userId: string, sessionId: string) {
     return request<void>(
       apiBase,
       `/chat/sessions/${sessionId}`,
       {
         method: "DELETE",
-        headers: { "X-User-ID": userId },
       },
     );
   },
 
   listChatMessages(
     apiBase: string,
-    userId: string,
+    _userId: string,
     sessionId: string,
     limit = 100,
   ) {
     return request<ChatMessage[]>(
       apiBase,
       `/chat/sessions/${sessionId}/messages?recent=true&limit=${limit}`,
-      { headers: { "X-User-ID": userId } },
+      {},
     );
   },
 
   streamChatMessage(
     apiBase: string,
-    userId: string,
+    _userId: string,
     sessionId: string,
     message: string,
     onEvent: (event: ChatEvent) => void,
@@ -410,7 +453,7 @@ export const liuyaoApi = {
   ) {
     return streamChatEvents(
       apiBase,
-      userId,
+      _userId,
       sessionId,
       message,
       onEvent,
@@ -420,7 +463,7 @@ export const liuyaoApi = {
 
   generateChatSuggestions(
     apiBase: string,
-    userId: string,
+    _userId: string,
     sessionId: string,
     messageId: string,
   ) {
@@ -429,7 +472,6 @@ export const liuyaoApi = {
       `/chat/sessions/${sessionId}/messages/${messageId}/suggestions`,
       {
         method: "POST",
-        headers: { "X-User-ID": userId },
       },
     );
   },
