@@ -189,34 +189,54 @@ button:disabled {
   max-width: 150px;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 10px 6px 7px;
+  gap: 8px;
+  padding: 7px 8px;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 253, 248, 0.64);
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
   color: var(--ink-soft);
   font-family: system-ui, sans-serif;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease;
 }
 
-.account-trigger > span {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--paper-deep);
-  color: var(--cinnabar);
-  font-family: "Noto Serif SC", serif;
+.account-trigger:hover {
+  background: rgba(120, 103, 81, 0.07);
+  color: var(--ink);
 }
 
-.account-trigger.registered > span {
-  background: var(--jade);
-  color: var(--white);
+.account-trigger-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 1.45;
+}
+
+.account-trigger.registered .account-trigger-icon {
+  color: var(--jade);
+}
+
+.account-trigger-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-trigger-chevron {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  fill: none;
+  stroke: #9b9388;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.4;
 }
 
 .workspace {
@@ -2660,6 +2680,11 @@ fieldset {
   box-shadow: 0 28px 90px rgba(40, 31, 21, 0.24);
 }
 
+.account-dialog.auth-dialog {
+  width: min(520px, 100%);
+  padding: 36px 46px 34px;
+}
+
 .account-dialog::before {
   content: "易";
   position: absolute;
@@ -2721,6 +2746,11 @@ fieldset {
   border-bottom: 1px solid var(--line);
 }
 
+.auth-dialog .account-tabs {
+  width: min(380px, 100%);
+  margin: 26px auto 0;
+}
+
 .account-tabs button {
   position: relative;
   padding: 10px;
@@ -2749,6 +2779,16 @@ fieldset {
   display: grid;
   gap: 15px;
   margin-top: 26px;
+}
+
+.account-auth-form {
+  width: min(380px, 100%);
+  gap: 13px;
+  margin: 20px auto 0;
+}
+
+.account-auth-form .account-primary {
+  margin-top: 5px;
 }
 
 .llm-settings-form {
@@ -2973,18 +3013,19 @@ fieldset {
   }
 
   .account-trigger {
-    max-width: 38px;
-    padding: 6px;
-    border: 0;
-    background: transparent;
-    font-size: 0;
+    max-width: 34px;
+    padding: 8px;
   }
 
-  .account-trigger > span {
-    width: 27px;
-    height: 27px;
-    flex-basis: 27px;
-    font-size: 11px;
+  .account-trigger-name,
+  .account-trigger-chevron {
+    display: none;
+  }
+
+  .account-trigger-icon {
+    width: 17px;
+    height: 17px;
+    flex-basis: 17px;
   }
 
   .account-dialog-backdrop {
@@ -2999,6 +3040,10 @@ fieldset {
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
+  }
+
+  .account-dialog.auth-dialog {
+    padding: 28px 24px 26px;
   }
 
   .account-dialog-heading h2 {

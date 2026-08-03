@@ -841,10 +841,25 @@ export default function Home() {
               setAccountOpen(true);
             }}
           >
-            <span>{currentUser?.user_type === "registered" ? "人" : "客"}</span>
-            {currentUser?.user_type === "registered"
-              ? currentUser.display_name || currentUser.username
-              : "登录"}
+            <svg
+              className="account-trigger-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6" />
+            </svg>
+            <span className="account-trigger-name">
+              {currentUser?.user_type === "registered"
+                ? currentUser.display_name || currentUser.username
+                : "登录"}
+            </span>
+            <svg
+              className="account-trigger-chevron"
+              viewBox="0 0 12 12"
+              aria-hidden="true"
+            >
+              <path d="m3 4.5 3 3 3-3" />
+            </svg>
           </button>
         </div>
       </header>

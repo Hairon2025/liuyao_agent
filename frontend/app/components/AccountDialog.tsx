@@ -165,7 +165,9 @@ export function AccountDialog({
       }}
     >
       <section
-        className="account-dialog"
+        className={`account-dialog ${
+          mode === "settings" ? "settings-dialog" : "auth-dialog"
+        }`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="account-dialog-title"
@@ -206,7 +208,10 @@ export function AccountDialog({
               </button>
             </div>
 
-            <form className="account-form" onSubmit={handleAuth}>
+            <form
+              className="account-form account-auth-form"
+              onSubmit={handleAuth}
+            >
               <label>
                 <span>用户名</span>
                 <input
