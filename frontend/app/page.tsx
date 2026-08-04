@@ -511,8 +511,16 @@ export default function Home() {
 
   function openChat() {
     if (!requireAIReady()) return;
+    // 主导航进入问易时只恢复已有会话，不重复消费之前的卦例启动请求。
+    setChatLaunch(null);
     setView("chat");
   }
+
+  const consumeChatLaunch = useCallback((token: number) => {
+    setChatLaunch((request) =>
+      request?.token === token ? null : request,
+    );
+  }, []);
 
   function handleIdentityChange(user: UserResponse) {
     setCurrentUser(user);
@@ -1273,6 +1281,7 @@ export default function Home() {
           apiBase={apiBase}
           userId={userId}
           launchRequest={chatLaunch}
+          onLaunchConsumed={consumeChatLaunch}
           onOpenDivination={(id) => void openDivinationFromChat(id)}
           onNotify={showToast}
         />

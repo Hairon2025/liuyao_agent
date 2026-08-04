@@ -34,12 +34,14 @@ export function ChatView({
   apiBase,
   userId,
   launchRequest,
+  onLaunchConsumed,
   onOpenDivination,
   onNotify,
 }: {
   apiBase: string;
   userId: string | null;
   launchRequest: ChatLaunchRequest | null;
+  onLaunchConsumed: (token: number) => void;
   onOpenDivination: (id: string) => void;
   onNotify: (message: string) => void;
 }) {
@@ -155,6 +157,8 @@ export function ChatView({
       return;
     }
     handledLaunchRef.current = launchRequest.token;
+    // 启动请求是一次性事件。由父组件立即清除，避免本组件重新挂载时再次创建会话。
+    onLaunchConsumed(launchRequest.token);
     void (async () => {
       try {
         const created = await liuyaoApi.createChatSession(apiBase, userId, {
@@ -173,7 +177,14 @@ export function ChatView({
         );
       }
     })();
-  }, [apiBase, launchRequest, loadSessions, onNotify, userId]);
+  }, [
+    apiBase,
+    launchRequest,
+    loadSessions,
+    onLaunchConsumed,
+    onNotify,
+    userId,
+  ]);
 
   async function createSession() {
     if (!userId) {
