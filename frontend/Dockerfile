@@ -1,11 +1,13 @@
 ARG NODE_BASE_IMAGE=node:22-alpine
 FROM ${NODE_BASE_IMAGE} AS builder
 
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
 WORKDIR /app
 
-# 先安装锁定版本的依赖，便于复用 Docker 构建缓存。
+# 默认使用阿里 npmmirror 安装锁定版本的依赖；构建时可覆盖 NPM_REGISTRY。
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --registry="${NPM_REGISTRY}"
 
 COPY frontend/ ./
 

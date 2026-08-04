@@ -77,6 +77,19 @@ python -m alembic -c backend/alembic.ini upgrade head
 迁移成功后才会启动 Uvicorn。首次构建会下载 Python、Node 和 Caddy 基础镜像，
 耗时取决于服务器网络。
 
+构建时默认使用以下国内依赖源：
+
+- Python：清华大学 PyPI 镜像；
+- Node.js：阿里 `npmmirror`。
+
+如需临时恢复官方依赖源，可以执行：
+
+```bash
+PIP_INDEX_URL=https://pypi.org/simple \
+NPM_REGISTRY=https://registry.npmjs.org \
+docker compose build
+```
+
 ## 4. 验证
 
 把 `SERVER_IP` 替换成公网 IP：
@@ -234,3 +247,8 @@ CADDY_IMAGE
 
 未设置时始终使用官方 `python:3.12-slim`、`node:22-alpine` 和
 `caddy:2-alpine`。
+
+这里的基础镜像源与 Python/npm 依赖源是两回事：Dockerfile 中的清华源和阿里源
+只能加速 `pip install` 与 `npm ci`，不能加速 `FROM python/node` 或拉取 Caddy。
+基础镜像下载较慢时，应配置服务器 Docker daemon 的 Registry Mirror，或者通过
+上面的三个环境变量指定云厂商提供的镜像地址。
