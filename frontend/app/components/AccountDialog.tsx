@@ -24,9 +24,9 @@ interface AccountDialogProps {
 }
 
 const DEFAULT_FORM: UserLLMSettingsInput = {
-  base_url: "https://api.openai.com/v1",
+  base_url: "https://api.deepseek.com",
   api_key: "",
-  model: "gpt-4.1-mini",
+  model: "deepseek-v4-pro",
   analyst_model: "",
   suggestion_model: "",
   memory_model: "",

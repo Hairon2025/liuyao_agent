@@ -1782,7 +1782,8 @@ fieldset {
 
 .chat-page {
   height: calc(100vh - 124px);
-  min-height: 640px;
+  height: calc(100dvh - 124px);
+  min-height: 0;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   overflow: hidden;
@@ -2004,7 +2005,9 @@ fieldset {
 .chat-message-scroll {
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chat-message-list {
@@ -2946,6 +2949,268 @@ fieldset {
   }
 }
 
+/* 宽屏显示器需要更大的信息密度，而不是让内容缩在页面中央。 */
+@media (min-width: 1680px) {
+  .topbar {
+    height: 88px;
+    padding-inline: clamp(64px, 5vw, 110px);
+  }
+
+  .brand-seal {
+    width: 48px;
+    height: 48px;
+    font-size: 26px;
+  }
+
+  .brand strong {
+    font-size: 23px;
+  }
+
+  .brand small {
+    font-size: 11px;
+  }
+
+  .topbar nav {
+    gap: 52px;
+  }
+
+  .topbar nav button {
+    font-size: 16px;
+  }
+
+  .api-status,
+  .account-trigger {
+    font-size: 13px;
+  }
+
+  .account-trigger {
+    max-width: 190px;
+  }
+
+  .workspace {
+    min-height: calc(100dvh - 140px);
+    grid-template-columns: minmax(440px, 27vw) minmax(0, 1fr);
+  }
+
+  .casting-panel {
+    padding: 52px clamp(42px, 3.4vw, 68px) 34px;
+  }
+
+  .panel-title h1 {
+    font-size: 33px;
+  }
+
+  .panel-title p,
+  .question-field textarea {
+    font-size: 16px;
+  }
+
+  .question-field > span,
+  fieldset legend,
+  .method-grid button strong {
+    font-size: 14px;
+  }
+
+  .method-grid button small,
+  .time-setting > span,
+  .result-header p {
+    font-size: 12px;
+  }
+
+  .method-grid button {
+    min-height: 84px;
+  }
+
+  .result-content {
+    max-width: 1480px;
+  }
+
+  .history-page {
+    min-height: calc(100dvh - 140px);
+    max-width: 1360px;
+    padding-top: 70px;
+  }
+
+  .history-heading h1 {
+    font-size: 42px;
+  }
+
+  .history-heading p,
+  .history-main p,
+  .history-main > strong,
+  .history-actions button {
+    font-size: 12px;
+  }
+
+  .history-main h2 {
+    font-size: 20px;
+  }
+
+  .history-main > div span {
+    font-size: 11px;
+  }
+
+  .chat-page {
+    height: calc(100dvh - 140px);
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+
+  .chat-sidebar > header,
+  .chat-header {
+    min-height: 104px;
+  }
+
+  .chat-sidebar > header {
+    padding-inline: 24px;
+  }
+
+  .chat-sidebar > header span,
+  .chat-session-main span,
+  .chat-session-main small {
+    font-size: 11px;
+  }
+
+  .chat-sidebar > header strong {
+    font-size: 22px;
+  }
+
+  .chat-sidebar > header button,
+  .chat-header-actions button {
+    font-size: 12px;
+  }
+
+  .chat-session-list {
+    padding: 14px;
+  }
+
+  .chat-session-main {
+    padding: 16px 11px 16px 16px;
+  }
+
+  .chat-session-main strong {
+    font-size: 14px;
+  }
+
+  .chat-header {
+    padding-inline: clamp(36px, 3.5vw, 64px);
+  }
+
+  .chat-header h1 {
+    max-width: 980px;
+    font-size: 24px;
+  }
+
+  .chat-header p {
+    max-width: 980px;
+    font-size: 11px;
+  }
+
+  .chat-message-list {
+    width: min(1180px, 100%);
+    padding: 50px clamp(56px, 4vw, 82px) 42px;
+  }
+
+  .chat-message {
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 17px;
+    margin-bottom: 34px;
+  }
+
+  .chat-message > span {
+    width: 40px;
+    height: 40px;
+    font-size: 15px;
+  }
+
+  .chat-message.user {
+    width: min(72%, 760px);
+    grid-template-columns: minmax(0, 1fr) 42px;
+  }
+
+  .chat-message.user p {
+    font-size: 15px;
+  }
+
+  .chat-message.assistant {
+    width: min(100%, 980px);
+  }
+
+  .chat-message.assistant > div {
+    padding: 26px 32px 28px;
+  }
+
+  .chat-markdown {
+    font-size: 16px;
+  }
+
+  .chat-markdown h1 {
+    font-size: 26px;
+  }
+
+  .chat-markdown h2 {
+    font-size: 21px;
+  }
+
+  .chat-markdown h3 {
+    font-size: 17px;
+  }
+
+  .chat-tool-card,
+  .chat-suggestions,
+  .chat-suggestions-loading {
+    width: min(760px, calc(100% - 59px));
+    margin-left: 59px;
+  }
+
+  .chat-tool-card strong,
+  .chat-suggestions button,
+  .chat-welcome > p:not(.eyebrow) {
+    font-size: 13px;
+  }
+
+  .chat-welcome > div {
+    width: min(760px, 100%);
+  }
+
+  .chat-welcome > div button {
+    padding: 15px 18px;
+    font-size: 13px;
+  }
+
+  .chat-input-area {
+    padding: 16px clamp(40px, 5vw, 90px) 12px;
+  }
+
+  .chat-composer {
+    width: min(920px, 100%);
+  }
+
+  .chat-composer textarea {
+    min-height: 78px;
+    padding: 17px 18px;
+    font-size: 15px;
+  }
+
+  .chat-composer > div {
+    width: 108px;
+  }
+
+  .chat-composer button {
+    min-width: 82px;
+    font-size: 12px;
+  }
+
+  .chat-input-area > p,
+  .site-footer {
+    font-size: 11px;
+  }
+
+  .site-footer {
+    min-height: 52px;
+    padding-inline: clamp(64px, 5vw, 110px);
+  }
+}
+
 @media (max-width: 1100px) {
   .workspace {
     grid-template-columns: 340px 1fr;
@@ -3000,11 +3265,12 @@ fieldset {
 
   .topbar nav {
     justify-self: center;
-    gap: 12px;
+    gap: 9px;
   }
 
   .topbar nav button {
-    font-size: 10px;
+    min-height: 44px;
+    font-size: 11px;
     letter-spacing: 0.05em;
   }
 
@@ -3178,8 +3444,15 @@ fieldset {
 
   .chat-page {
     height: calc(100vh - 112px);
-    min-height: 560px;
+    height: calc(100dvh - 112px);
+    min-height: 0;
+    max-width: 100vw;
     grid-template-columns: 1fr;
+  }
+
+  .chat-main {
+    width: 100%;
+    overflow: hidden;
   }
 
   .chat-sidebar {
@@ -3188,7 +3461,8 @@ fieldset {
     top: 66px;
     bottom: 0;
     left: 0;
-    width: min(310px, 86vw);
+    width: min(340px, 88vw);
+    padding-bottom: env(safe-area-inset-bottom);
     transform: translateX(-105%);
     box-shadow: 18px 0 48px rgba(38, 32, 25, 0.18);
     transition: transform 180ms ease;
@@ -3208,13 +3482,13 @@ fieldset {
   }
 
   .chat-header {
-    min-height: 78px;
+    min-height: 72px;
     padding: 11px 14px;
   }
 
   .chat-menu-button {
-    width: 34px;
-    height: 34px;
+    width: 40px;
+    height: 40px;
     display: grid;
     place-items: center;
     padding: 0;
@@ -3239,11 +3513,11 @@ fieldset {
   }
 
   .chat-message-list {
-    padding: 25px 15px 20px;
+    padding: 22px 12px 18px;
   }
 
   .chat-message.user {
-    width: 90%;
+    width: calc(100% - 8px);
     grid-template-columns: minmax(0, 1fr) 29px;
   }
 
@@ -3259,6 +3533,7 @@ fieldset {
   }
 
   .chat-message.assistant > div {
+    min-width: 0;
     padding: 18px 15px 20px;
     border-radius: 3px 15px 15px 15px;
   }
@@ -3301,6 +3576,24 @@ fieldset {
     margin-left: 39px;
   }
 
+  .chat-inline-error,
+  .chat-suggestions,
+  .chat-suggestions-loading {
+    width: calc(100% - 39px);
+    margin-left: 39px;
+  }
+
+  .chat-suggestions > div {
+    display: grid;
+  }
+
+  .chat-suggestions button {
+    width: 100%;
+    justify-content: space-between;
+    padding: 11px 13px;
+    font-size: 12px;
+  }
+
   .chat-tool-card button {
     grid-column: 2;
     width: max-content;
@@ -3314,6 +3607,8 @@ fieldset {
 
   .chat-welcome {
     padding: 24px 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .chat-welcome > p:not(.eyebrow) br {
@@ -3321,7 +3616,7 @@ fieldset {
   }
 
   .chat-input-area {
-    padding: 9px 10px 7px;
+    padding: 9px 10px calc(7px + env(safe-area-inset-bottom));
   }
 
   .chat-composer {
@@ -3331,11 +3626,19 @@ fieldset {
   .chat-composer textarea {
     min-height: 58px;
     padding: 12px;
+    /* 避免 iOS 因输入框字号小于 16px 自动放大页面。 */
+    font-size: 16px;
   }
 
   .chat-composer > div {
     width: 76px;
     padding: 7px;
+  }
+
+  .chat-composer button {
+    min-width: 62px;
+    min-height: 40px;
+    font-size: 11px;
   }
 
   .site-footer {
@@ -3345,6 +3648,51 @@ fieldset {
   }
 
   .site-footer span:first-child {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .topbar {
+    gap: 5px;
+    padding-inline: 8px;
+  }
+
+  .topbar nav {
+    gap: 4px;
+  }
+
+  .topbar nav button {
+    padding-inline: 1px;
+  }
+
+  .chat-header-actions {
+    display: none;
+  }
+
+  .chat-header p {
+    max-width: 66vw;
+  }
+
+  .chat-message-list {
+    padding-inline: 9px;
+  }
+
+  .chat-message {
+    gap: 8px;
+  }
+
+  .chat-message.user > div,
+  .chat-message.assistant > div {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .chat-markdown {
+    font-size: 14px;
+  }
+
+  .chat-input-area > p {
     display: none;
   }
 }
