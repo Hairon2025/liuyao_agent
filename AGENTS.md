@@ -163,6 +163,7 @@ npm run dev
 | `POST` | `/divinations/{id}/interpret/stream` | SSE 流式生成解读并写回数据库 |
 | `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
 | `POST` | `/chat/sessions/{id}/messages/stream` | SSE 执行一轮 Chatbot 对话 |
+| `POST` | `/chat/sessions/open` | 复用卦例最近会话或基于同一卦例新开讨论 |
 | `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 异步生成并缓存结构化追问 |
 
 身份通过 HttpOnly Cookie 的服务端 Session 传递；Repository 查询必须同时限定资源

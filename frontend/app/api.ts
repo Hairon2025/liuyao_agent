@@ -2,6 +2,7 @@ import type {
   ChatEvent,
   ChatMessage,
   ChatSession,
+  ChatSessionOpenResult,
   ChatSessionStatus,
   ChatSuggestionsResponse,
   DivinationResponse,
@@ -376,6 +377,41 @@ export const liuyaoApi = {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  },
+
+  openDivinationChatSession(
+    apiBase: string,
+    _userId: string,
+    payload: {
+      divination_id: string;
+      mode?: "reuse_latest" | "create_new";
+      title?: string;
+    },
+  ) {
+    return request<ChatSessionOpenResult>(
+      apiBase,
+      "/chat/sessions/open",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    );
+  },
+
+  listDivinationChatSessions(
+    apiBase: string,
+    _userId: string,
+    divinationId: string,
+  ) {
+    const query = new URLSearchParams({
+      divination_id: divinationId,
+      limit: "100",
+    });
+    return request<ChatSession[]>(
+      apiBase,
+      `/chat/sessions?${query.toString()}`,
+      {},
+    );
   },
 
   listChatSessions(

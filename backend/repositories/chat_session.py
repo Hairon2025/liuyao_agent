@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, select, update as sql_update
+from sqlalchemy import Select, func, select, update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.chat_session import ChatSession
@@ -50,6 +50,7 @@ class ChatSessionRepository:
         user_id: uuid.UUID,
         *,
         status: str | None = None,
+        divination_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[ChatSession]:
@@ -57,6 +58,10 @@ class ChatSessionRepository:
         query = select(ChatSession).where(ChatSession.user_id == user_id)
         if status is not None:
             query = query.where(ChatSession.status == status)
+        if divination_id is not None:
+            query = query.where(
+                ChatSession.active_divination_id == divination_id
+            )
         result = await self._session.execute(
             query
             .order_by(
@@ -67,6 +72,40 @@ class ChatSessionRepository:
             .offset(offset)
         )
         return result.scalars().all()
+
+    async def get_latest_for_divination(
+        self,
+        user_id: uuid.UUID,
+        divination_id: str,
+    ) -> ChatSession | None:
+        """读取当前用户围绕指定卦例最近活动的一条会话。"""
+        result = await self._session.execute(
+            select(ChatSession)
+            .where(
+                ChatSession.user_id == user_id,
+                ChatSession.active_divination_id == divination_id,
+            )
+            .order_by(
+                ChatSession.last_message_at.desc(),
+                ChatSession.id.desc(),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def count_for_divination(
+        self,
+        user_id: uuid.UUID,
+        divination_id: str,
+    ) -> int:
+        """统计当前用户与指定卦例关联的全部会话。"""
+        result = await self._session.execute(
+            select(func.count(ChatSession.id)).where(
+                ChatSession.user_id == user_id,
+                ChatSession.active_divination_id == divination_id,
+            )
+        )
+        return int(result.scalar_one())
 
     async def update(
         self,

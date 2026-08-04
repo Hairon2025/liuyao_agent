@@ -14,8 +14,8 @@ import type { StreamingToolState } from "./ChatToolCard";
 
 export interface ChatLaunchRequest {
   token: number;
-  divinationId: string;
-  title: string;
+  sessionId: string;
+  openSidebar?: boolean;
 }
 
 const GENERAL_QUICK_QUESTIONS = [
@@ -65,6 +65,7 @@ export function ChatView({
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
+  const skipNextRestoreRef = useRef(false);
   const currentSessionIdRef = useRef<string | null>(null);
   const suggestionRequestRef = useRef(0);
 
@@ -133,13 +134,18 @@ export function ChatView({
     let cancelled = false;
     async function restoreSessions() {
       await Promise.resolve();
-      if (!cancelled && userId) await loadSessions();
+      if (cancelled || !userId || launchRequest) return;
+      if (skipNextRestoreRef.current) {
+        skipNextRestoreRef.current = false;
+        return;
+      }
+      await loadSessions();
     }
     void restoreSessions();
     return () => {
       cancelled = true;
     };
-  }, [loadSessions, userId]);
+  }, [launchRequest, loadSessions, userId]);
 
   useEffect(
     () => () => {
@@ -157,23 +163,18 @@ export function ChatView({
       return;
     }
     handledLaunchRef.current = launchRequest.token;
+    skipNextRestoreRef.current = true;
     // 启动请求是一次性事件。由父组件立即清除，避免本组件重新挂载时再次创建会话。
     onLaunchConsumed(launchRequest.token);
+    setSidebarOpen(Boolean(launchRequest.openSidebar));
     void (async () => {
       try {
-        const created = await liuyaoApi.createChatSession(apiBase, userId, {
-          title: launchRequest.title.slice(0, 100),
-          active_divination_id: launchRequest.divinationId,
-        });
-        setCurrent(created);
-        setMessages([]);
-        await loadSessions(created.id);
-        onNotify("已建立卦例追问会话");
+        await loadSessions(launchRequest.sessionId);
       } catch (launchError) {
         onNotify(
           launchError instanceof Error
             ? launchError.message
-            : "建立追问会话失败",
+            : "打开追问会话失败",
         );
       }
     })();

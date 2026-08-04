@@ -53,6 +53,84 @@ def test_chat_session_crud_and_ownership(client):
     assert client.get(f"/chat/sessions/{session_id}").status_code == 404
 
 
+def test_open_divination_session_reuses_or_creates_on_demand(client):
+    """卦例入口默认复用最近会话，只有显式选择时才新开讨论。"""
+    divination = client.post(
+        "/divinations",
+        json={
+            "method": "random",
+            "question": "未来工作发展如何",
+        },
+    )
+    assert divination.status_code == 200
+    divination_id = divination.json()["divination_id"]
+
+    first = client.post(
+        "/chat/sessions/open",
+        json={
+            "divination_id": divination_id,
+            "title": "未来工作发展如何",
+        },
+    )
+    assert first.status_code == 200
+    assert first.json()["created"] is True
+    assert first.json()["related_session_count"] == 1
+    first_session_id = first.json()["session"]["id"]
+
+    reused = client.post(
+        "/chat/sessions/open",
+        json={"divination_id": divination_id},
+    )
+    assert reused.status_code == 200
+    assert reused.json()["created"] is False
+    assert reused.json()["related_session_count"] == 1
+    assert reused.json()["session"]["id"] == first_session_id
+
+    created_new = client.post(
+        "/chat/sessions/open",
+        json={
+            "divination_id": divination_id,
+            "mode": "create_new",
+            "title": "换一个角度分析",
+        },
+    )
+    assert created_new.status_code == 200
+    assert created_new.json()["created"] is True
+    assert created_new.json()["related_session_count"] == 2
+    second_session_id = created_new.json()["session"]["id"]
+    assert second_session_id != first_session_id
+
+    related = client.get(
+        f"/chat/sessions?divination_id={divination_id}"
+    )
+    assert related.status_code == 200
+    assert {item["id"] for item in related.json()} == {
+        first_session_id,
+        second_session_id,
+    }
+
+    archived = client.patch(
+        f"/chat/sessions/{second_session_id}",
+        json={"status": "archived"},
+    )
+    assert archived.status_code == 200
+
+    restored = client.post(
+        "/chat/sessions/open",
+        json={"divination_id": divination_id},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["created"] is False
+    assert restored.json()["session"]["id"] == second_session_id
+    assert restored.json()["session"]["status"] == "active"
+
+    missing = client.post(
+        "/chat/sessions/open",
+        json={"divination_id": "f" * 32},
+    )
+    assert missing.status_code == 404
+
+
 def test_stream_chat_message_persists_user_and_assistant(
     client,
     monkeypatch,

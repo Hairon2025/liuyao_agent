@@ -30,6 +30,8 @@ from backend.schema.agent import (
 from backend.schema.api.chat import (
     ChatMessageResponse,
     ChatSessionCreate,
+    ChatSessionOpenRequest,
+    ChatSessionOpenResponse,
     ChatSessionResponse,
     ChatSuggestionsResponse,
 )
@@ -103,12 +105,14 @@ class ChatService:
         user_id: uuid.UUID,
         *,
         status: str | None = None,
+        divination_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[ChatSessionResponse]:
         rows = await self._session_repository.list_for_user(
             user_id,
             status=status,
+            divination_id=divination_id,
             limit=limit,
             offset=offset,
         )
@@ -116,6 +120,54 @@ class ChatService:
             ChatSessionResponse.model_validate(row)
             for row in rows
         ]
+
+    async def open_divination_session(
+        self,
+        payload: ChatSessionOpenRequest,
+        user_id: uuid.UUID,
+    ) -> ChatSessionOpenResponse:
+        """复用指定卦例最近的会话，或按用户要求新建独立讨论。"""
+        await self._ensure_divination_owned(payload.divination_id, user_id)
+        related_count = await self._session_repository.count_for_divination(
+            user_id,
+            payload.divination_id,
+        )
+
+        if payload.mode == "reuse_latest" and related_count:
+            chat_session = (
+                await self._session_repository.get_latest_for_divination(
+                    user_id,
+                    payload.divination_id,
+                )
+            )
+            if chat_session is not None:
+                # “继续问易”代表明确的恢复意图，归档会话在这里自动恢复。
+                if chat_session.status == "archived":
+                    await self._session_repository.update(
+                        chat_session,
+                        {"status": "active"},
+                    )
+                    await self._session.commit()
+                    await self._session.refresh(chat_session)
+                return ChatSessionOpenResponse(
+                    created=False,
+                    related_session_count=related_count,
+                    session=ChatSessionResponse.model_validate(chat_session),
+                )
+
+        chat_session = ChatSession(
+            user_id=user_id,
+            title=payload.title,
+            active_divination_id=payload.divination_id,
+        )
+        await self._session_repository.add(chat_session)
+        await self._session.commit()
+        await self._session.refresh(chat_session)
+        return ChatSessionOpenResponse(
+            created=True,
+            related_session_count=related_count + 1,
+            session=ChatSessionResponse.model_validate(chat_session),
+        )
 
     async def get_session(
         self,

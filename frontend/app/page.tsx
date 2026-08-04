@@ -19,6 +19,7 @@ import {
   ChatView,
   type ChatLaunchRequest,
 } from "./components/chat/ChatView";
+import { DivinationChatAction } from "./components/chat/DivinationChatAction";
 import type {
   DivinationResponse,
   HexagramInfo,
@@ -353,6 +354,7 @@ export default function Home() {
   >(null);
   const [interpretationError, setInterpretationError] = useState("");
   const interpretationAbortRef = useRef<AbortController | null>(null);
+  const chatOpeningRef = useRef(false);
   const identityRequestRef = useRef<{
     apiBase: string;
     promise: Promise<UserResponse>;
@@ -373,6 +375,11 @@ export default function Home() {
   const [chatLaunch, setChatLaunch] = useState<ChatLaunchRequest | null>(
     null,
   );
+  const [relatedChatInfo, setRelatedChatInfo] = useState<{
+    divinationId: string;
+    count: number;
+  } | null>(null);
+  const [chatOpening, setChatOpening] = useState(false);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
@@ -492,6 +499,42 @@ export default function Home() {
       setHistoryLoading(false);
     }
   }, [apiBase, showToast, userId]);
+
+  useEffect(() => {
+    const divinationId = result?.divination_id;
+    if (
+      !divinationId ||
+      !userId ||
+      currentUser?.user_type !== "registered" ||
+      !llmSettings
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    void liuyaoApi
+      .listDivinationChatSessions(apiBase, userId, divinationId)
+      .then((sessions) => {
+        if (!cancelled) {
+          setRelatedChatInfo({
+            divinationId,
+            count: sessions.length,
+          });
+        }
+      })
+      .catch(() => {
+        // 这里只影响按钮文案；真正打开时仍由统一接口返回明确错误。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    apiBase,
+    currentUser?.user_type,
+    llmSettings,
+    result?.divination_id,
+    userId,
+  ]);
 
   function requireAIReady() {
     if (!currentUser || currentUser.user_type !== "registered") {
@@ -726,14 +769,57 @@ export default function Home() {
     void loadHistory();
   }
 
-  function openChatForDivination(record: DivinationResponse) {
+  async function openChatForDivination(
+    record: DivinationResponse,
+    mode: "reuse_latest" | "create_new" = "reuse_latest",
+    openSidebar = false,
+  ) {
     if (!requireAIReady()) return;
-    setChatLaunch({
-      token: Date.now(),
-      divinationId: record.divination_id,
-      title: record.paipan.question,
-    });
-    setView("chat");
+    if (!userId || chatOpeningRef.current) return;
+    chatOpeningRef.current = true;
+    setChatOpening(true);
+    try {
+      const opened = await liuyaoApi.openDivinationChatSession(
+        apiBase,
+        userId,
+        {
+          divination_id: record.divination_id,
+          mode,
+          title: record.paipan.question.slice(0, 100),
+        },
+      );
+      setRelatedChatInfo({
+        divinationId: record.divination_id,
+        count: opened.related_session_count,
+      });
+      setChatLaunch({
+        token: Date.now(),
+        sessionId: opened.session.id,
+        openSidebar,
+      });
+      setView("chat");
+      showToast(
+        opened.created
+          ? mode === "create_new"
+            ? "已基于当前卦例新开讨论"
+            : "已建立卦例问易会话"
+          : "已继续最近的卦例会话",
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "打开问易失败");
+    } finally {
+      chatOpeningRef.current = false;
+      setChatOpening(false);
+    }
+  }
+
+  function restartDivination(record: DivinationResponse) {
+    setQuestion(record.paipan.question);
+    setResult(null);
+    setResultTab("paipan");
+    setRelatedChatInfo(null);
+    setView("workspace");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function openDivinationFromChat(id: string) {
@@ -1106,11 +1192,33 @@ export default function Home() {
                     <p>{formatDateTime(result.paipan.qigua_time)} 起卦</p>
                   </div>
                   <div className="result-actions">
+                    <DivinationChatAction
+                      relatedCount={
+                        relatedChatInfo?.divinationId === result.divination_id
+                          ? relatedChatInfo.count
+                          : null
+                      }
+                      busy={chatOpening}
+                      onContinue={() =>
+                        void openChatForDivination(result)
+                      }
+                      onCreateNew={() =>
+                        void openChatForDivination(result, "create_new")
+                      }
+                      onViewRelated={() =>
+                        void openChatForDivination(
+                          result,
+                          "reuse_latest",
+                          true,
+                        )
+                      }
+                    />
                     <button
                       type="button"
-                      onClick={() => openChatForDivination(result)}
+                      className="restart-divination"
+                      onClick={() => restartDivination(result)}
                     >
-                      问易追问
+                      重新起卦
                     </button>
                     <button type="button" onClick={downloadMarkdown}>
                       ↓ 导出排盘
@@ -1331,9 +1439,10 @@ export default function Home() {
                     <button
                       type="button"
                       className="chat-record"
-                      onClick={() => openChatForDivination(record)}
+                      onClick={() => void openChatForDivination(record)}
+                      disabled={chatOpening}
                     >
-                      追问
+                      问易
                     </button>
                     <button
                       type="button"

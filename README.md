@@ -169,6 +169,7 @@ docker compose up -d
 | `POST` | `/divinations/{id}/interpret/stream` | 通过 SSE 流式生成解读并写回数据库 |
 | `DELETE` | `/divinations/{id}` | 删除当前用户的一条卦例 |
 | `POST` | `/chat/sessions` | 创建 Chatbot 会话 |
+| `POST` | `/chat/sessions/open` | 复用卦例最近会话或基于同一卦例新开讨论 |
 | `GET` | `/chat/sessions` | 分页列出当前用户的会话 |
 | `GET` | `/chat/sessions/{id}` | 读取会话 |
 | `PATCH` | `/chat/sessions/{id}` | 修改标题、归档状态、模型或当前卦例 |

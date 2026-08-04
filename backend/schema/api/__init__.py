@@ -1,6 +1,8 @@
 from backend.schema.api.chat import (
     ChatMessageResponse,
     ChatSessionCreate,
+    ChatSessionOpenRequest,
+    ChatSessionOpenResponse,
     ChatSessionResponse,
     ChatSessionUpdate,
     ChatSuggestionsResponse,
@@ -10,6 +12,8 @@ from backend.schema.api.chat import (
 __all__ = [
     "ChatMessageResponse",
     "ChatSessionCreate",
+    "ChatSessionOpenRequest",
+    "ChatSessionOpenResponse",
     "ChatSessionResponse",
     "ChatSessionUpdate",
     "ChatSuggestionsResponse",

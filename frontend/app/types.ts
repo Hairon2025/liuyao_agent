@@ -139,6 +139,12 @@ export interface ChatSession {
   last_message_at: string;
 }
 
+export interface ChatSessionOpenResult {
+  created: boolean;
+  related_session_count: number;
+  session: ChatSession;
+}
+
 export interface ChatMessage {
   id: string;
   session_id: string;

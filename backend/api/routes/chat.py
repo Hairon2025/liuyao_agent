@@ -12,6 +12,8 @@ from backend.models.user import User
 from backend.schema.api.chat import (
     ChatMessageResponse,
     ChatSessionCreate,
+    ChatSessionOpenRequest,
+    ChatSessionOpenResponse,
     ChatSessionResponse,
     ChatSessionUpdate,
     ChatSuggestionsResponse,
@@ -67,6 +69,22 @@ async def create_chat_session(
         ) from None
 
 
+@router.post("/open", response_model=ChatSessionOpenResponse)
+async def open_divination_chat_session(
+    payload: ChatSessionOpenRequest,
+    user: CurrentUserDep,
+    service: ChatServiceDep,
+):
+    """继续指定卦例的最近会话，或基于同一卦例新开讨论。"""
+    try:
+        return await service.open_divination_session(payload, user.id)
+    except ChatDivinationOwnershipError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="需要关联的卦例不存在",
+        ) from None
+
+
 @router.get("", response_model=list[ChatSessionResponse])
 async def list_chat_sessions(
     user: CurrentUserDep,
@@ -75,6 +93,10 @@ async def list_chat_sessions(
         Literal["active", "archived"] | None,
         Query(alias="status"),
     ] = None,
+    divination_id: Annotated[
+        str | None,
+        Query(min_length=32, max_length=32),
+    ] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ):
@@ -82,6 +104,7 @@ async def list_chat_sessions(
     return await service.list_sessions(
         user.id,
         status=session_status,
+        divination_id=divination_id,
         limit=limit,
         offset=offset,
     )

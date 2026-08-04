@@ -898,20 +898,141 @@ fieldset {
 
 .result-actions {
   display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
-.result-actions button {
+.result-actions > button {
   padding: 10px 14px;
   border: 1px solid var(--line);
   background: rgba(255, 253, 248, 0.58);
   font-size: 11px;
 }
 
-.result-actions button.primary {
+.result-actions > button.primary {
   border-color: var(--cinnabar);
   background: var(--cinnabar);
   color: white;
+}
+
+.divination-chat-action {
+  position: relative;
+  z-index: 12;
+  font-family: system-ui, sans-serif;
+}
+
+.divination-chat-split {
+  height: 100%;
+  display: flex;
+}
+
+.divination-chat-split button {
+  border: 1px solid var(--cinnabar);
+  background: var(--cinnabar);
+  color: white;
+  font-size: 11px;
+}
+
+.divination-chat-main {
+  min-width: 104px;
+  padding: 9px 13px;
+}
+
+.divination-chat-main span {
+  display: inline-grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  margin-right: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-size: 10px;
+}
+
+.divination-chat-more {
+  width: 34px;
+  padding: 0;
+  border-left-color: rgba(255, 255, 255, 0.32) !important;
+  font-size: 10px !important;
+}
+
+.divination-chat-split button:hover:not(:disabled) {
+  background: var(--cinnabar-dark);
+}
+
+.divination-chat-backdrop {
+  display: none;
+}
+
+.divination-chat-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 9px);
+  right: 0;
+  width: 310px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: 0 20px 54px rgba(48, 39, 29, 0.2);
+  color: var(--ink);
+}
+
+.divination-chat-menu header {
+  display: grid;
+  gap: 3px;
+  padding: 16px 17px 13px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(233, 226, 212, 0.34);
+}
+
+.divination-chat-menu header span {
+  color: var(--cinnabar);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+}
+
+.divination-chat-menu header strong {
+  font-family: "Noto Serif SC", "Songti SC", serif;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.divination-chat-menu header small {
+  color: #91897f;
+  font-size: 9px;
+}
+
+.divination-chat-menu > button:not(.divination-chat-cancel) {
+  width: 100%;
+  display: grid;
+  gap: 4px;
+  padding: 13px 17px;
+  border: 0;
+  border-bottom: 1px solid rgba(120, 103, 81, 0.12);
+  background: transparent;
+  text-align: left;
+}
+
+.divination-chat-menu > button:hover {
+  background: rgba(166, 56, 45, 0.045);
+}
+
+.divination-chat-menu b {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.divination-chat-menu button small {
+  color: #938b80;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.divination-chat-cancel {
+  display: none;
 }
 
 .calendar-strip {
@@ -3374,10 +3495,89 @@ fieldset {
 
   .result-actions {
     width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .result-actions button {
-    flex: 1;
+  .result-actions > button,
+  .divination-chat-action,
+  .divination-chat-split,
+  .divination-chat-main {
+    width: 100%;
+  }
+
+  .result-actions > button {
+    min-height: 42px;
+  }
+
+  .divination-chat-action {
+    position: static;
+  }
+
+  .divination-chat-main {
+    min-height: 42px;
+    min-width: 0;
+  }
+
+  .divination-chat-backdrop {
+    position: fixed;
+    z-index: 110;
+    inset: 0;
+    display: block;
+    width: 100vw;
+    height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: rgba(37, 35, 31, 0.42);
+    backdrop-filter: blur(3px);
+  }
+
+  .divination-chat-menu {
+    position: fixed;
+    z-index: 120;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: min(82dvh, 620px);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow-y: auto;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .divination-chat-menu header {
+    padding: 21px 21px 16px;
+  }
+
+  .divination-chat-menu header strong {
+    font-size: 20px;
+  }
+
+  .divination-chat-menu > button:not(.divination-chat-cancel) {
+    min-height: 64px;
+    padding: 14px 21px;
+  }
+
+  .divination-chat-menu b {
+    font-size: 14px;
+  }
+
+  .divination-chat-menu button small {
+    font-size: 11px;
+  }
+
+  .divination-chat-cancel {
+    width: calc(100% - 28px);
+    min-height: 44px;
+    display: block;
+    margin: 11px 14px 13px;
+    border: 1px solid var(--line);
+    background: rgba(233, 226, 212, 0.46);
+    font-size: 13px;
   }
 
   .calendar-strip {

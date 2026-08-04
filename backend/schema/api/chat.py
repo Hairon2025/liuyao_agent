@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 ChatSessionStatus = Literal["active", "archived"]
+ChatSessionOpenMode = Literal["reuse_latest", "create_new"]
 ChatMessageRole = Literal["user", "assistant", "system", "tool"]
 ChatMessageTypeValue = Literal[
     "text",
@@ -108,6 +109,29 @@ class ChatSessionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     last_message_at: datetime
+
+
+class ChatSessionOpenRequest(BaseModel):
+    """打开卦例会话；默认复用最近会话，也可显式新建讨论。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    divination_id: str = Field(..., min_length=32, max_length=32)
+    mode: ChatSessionOpenMode = "reuse_latest"
+    title: str | None = Field(default=None, max_length=100)
+
+    _normalize_fields = field_validator(
+        "divination_id",
+        "title",
+    )(_normalize_optional_text)
+
+
+class ChatSessionOpenResponse(BaseModel):
+    """打开卦例会话的结果，并返回当前关联会话总数。"""
+
+    created: bool
+    related_session_count: int = Field(..., ge=1)
+    session: ChatSessionResponse
 
 
 class ChatMessageResponse(BaseModel):
