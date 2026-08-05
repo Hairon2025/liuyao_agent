@@ -23,9 +23,15 @@ FROM ${NODE_BASE_IMAGE} AS runtime
 # 生产容器监听所有网卡上的 3000 端口，但仅在 Docker 内部网络暴露。
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    TZ=Asia/Shanghai
 
 WORKDIR /app
+
+# 安装东八区时区数据，确保 Node 服务端日志使用北京时间。
+RUN apk add --no-cache tzdata \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone
 
 # 运行阶段不复制源码和完整 node_modules，以减小最终镜像体积。
 COPY --from=builder --chown=node:node /app/dist/standalone ./

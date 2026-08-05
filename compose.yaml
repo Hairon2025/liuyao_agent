@@ -10,6 +10,8 @@ services:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple}
     env_file:
       - deploy/backend.env
+    environment:
+      TZ: Asia/Shanghai
     volumes:
       - liuyao_data:/data
     expose:
@@ -36,6 +38,8 @@ services:
         NEXT_PUBLIC_API_BASE_URL: /api
     expose:
       - "3000"
+    environment:
+      TZ: Asia/Shanghai
     init: true
     restart: unless-stopped
     security_opt:
@@ -49,7 +53,13 @@ services:
         max-file: "3"
 
   caddy:
-    image: ${CADDY_IMAGE:-caddy:2-alpine}
+    build:
+      context: .
+      dockerfile: deploy/Caddy.Dockerfile
+      args:
+        CADDY_BASE_IMAGE: ${CADDY_IMAGE:-caddy:2-alpine}
+    environment:
+      TZ: Asia/Shanghai
     depends_on:
       backend:
         condition: service_healthy

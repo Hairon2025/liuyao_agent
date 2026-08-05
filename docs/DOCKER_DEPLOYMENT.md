@@ -122,6 +122,31 @@ docker compose logs -f caddy
 
 退出持续日志使用 `Ctrl+C`，不会停止容器。
 
+### 验证东八区时间
+
+三个容器都内置时区数据库，并统一设置为 `Asia/Shanghai`。可以执行：
+
+```bash
+docker compose exec backend date
+docker compose exec frontend date
+docker compose exec caddy date
+```
+
+输出中应包含 `CST`，时间应与北京时间一致。服务器宿主机继续使用 UTC 也没有关系，
+应用容器会独立使用东八区。
+
+如果还希望服务器宿主机本身也显示北京时间，可以在常见的 systemd Linux 发行版
+中执行：
+
+```bash
+sudo timedatectl set-timezone Asia/Shanghai
+timedatectl
+```
+
+数据库里的 `created_at`、`updated_at`、登录过期时间等审计字段仍统一保存 UTC，这是
+有意设计；前端展示时再转换为浏览器本地时间。起卦请求明确携带的时间不会被强制
+改写，只有后端使用 `datetime.now()` 的兜底场景会采用容器的东八区时间。
+
 ## 5. 常用维护命令
 
 更新代码并重建：
@@ -130,6 +155,13 @@ docker compose logs -f caddy
 git pull
 docker compose build
 docker compose up -d
+```
+
+如果本次更新前已经部署过旧镜像，需要重新构建三个服务才能安装时区数据：
+
+```bash
+docker compose build backend frontend caddy
+docker compose up -d --force-recreate
 ```
 
 只重建前端：

@@ -8,9 +8,17 @@ ARG PIP_INDEX_URL=https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PIP_INDEX_URL=${PIP_INDEX_URL}
+    PIP_INDEX_URL=${PIP_INDEX_URL} \
+    TZ=Asia/Shanghai
 
 WORKDIR /app
+
+# 安装东八区时区数据，使日志和 datetime.now() 使用北京时间。
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tzdata \
+    && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo "Asia/Shanghai" > /etc/timezone \
+    && rm -rf /var/lib/apt/lists/*
 
 # 使用固定 UID/GID 的非 root 用户运行后端，降低容器权限。
 RUN groupadd --gid 10001 app \
