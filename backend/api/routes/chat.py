@@ -11,6 +11,7 @@ from backend.api.deps import get_chat_service, get_current_user
 from backend.models.user import User
 from backend.schema.api.chat import (
     ChatMessageResponse,
+    ChatRunCancelResponse,
     ChatSessionCreate,
     ChatSessionOpenRequest,
     ChatSessionOpenResponse,
@@ -23,6 +24,7 @@ from backend.services.chat import ChatService
 from backend.services.exceptions import (
     ChatDivinationOwnershipError,
     ChatMessageNotFoundError,
+    ChatRunAlreadyActiveError,
     ChatSessionArchivedError,
     ChatSessionNotFoundError,
     ChatSuggestionGenerationError,
@@ -213,12 +215,25 @@ async def stream_chat_message(
     except ChatSessionArchivedError:
         raise _archived_session(session_id) from None
 
+    try:
+        await service.prepare_run(
+            request_id=payload.client_request_id,
+            session_id=session_id,
+            user_id=user.id,
+        )
+    except ChatRunAlreadyActiveError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该会话已有一条消息正在生成，请先等待或停止它",
+        ) from None
+
     return StreamingResponse(
         chat_events_to_sse(
             service.stream_reply(
                 session_id=session_id,
                 user_id=user.id,
                 user_message=payload.message,
+                request_id=payload.client_request_id,
                 model=payload.model,
             )
         ),
@@ -229,6 +244,27 @@ async def stream_chat_message(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.post(
+    "/{session_id}/runs/{request_id}/cancel",
+    response_model=ChatRunCancelResponse,
+)
+async def cancel_chat_run(
+    session_id: uuid.UUID,
+    request_id: uuid.UUID,
+    user: CurrentUserDep,
+    service: ChatServiceDep,
+):
+    """显式停止当前会话的一轮 Agent 执行。"""
+    try:
+        return await service.cancel_run(
+            request_id=request_id,
+            session_id=session_id,
+            user_id=user.id,
+        )
+    except ChatSessionNotFoundError:
+        raise _session_not_found(session_id) from None
 
 
 @router.post(

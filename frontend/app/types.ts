@@ -173,6 +173,7 @@ export interface ChatToolResult {
 }
 
 export type ChatEventType =
+  | "run_started"
   | "text_delta"
   | "tool_call_started"
   | "tool_call_completed"
@@ -183,6 +184,7 @@ export type ChatEventType =
 
 export interface ChatEvent {
   event_type: ChatEventType;
+  request_id: string | null;
   content: string | null;
   tool_call_id: string | null;
   tool_name: string | null;
@@ -199,4 +201,10 @@ export interface ChatSuggestionsResponse {
   source_message_id: string;
   questions: string[];
   cached: boolean;
+}
+
+export interface ChatRunCancelResponse {
+  request_id: string;
+  status: "cancelled" | "cancelling" | "already_finished";
+  message: string;
 }

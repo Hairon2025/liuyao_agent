@@ -21,6 +21,7 @@ from pydantic import (
 class ChatEventType(str, Enum):
     """Agent 对 API 层发出的可观察事件。"""
 
+    RUN_STARTED = "run_started"
     TEXT_DELTA = "text_delta"
     TOOL_CALL_STARTED = "tool_call_started"
     TOOL_CALL_COMPLETED = "tool_call_completed"
@@ -83,6 +84,7 @@ class ChatEvent(AgentProtocolModel):
     """把 SDK 事件适配成现有 SSE 接口使用的统一事件。"""
 
     event_type: ChatEventType
+    request_id: uuid.UUID | None = None
     content: str | None = None
     tool_call_id: str | None = Field(
         default=None,
@@ -110,6 +112,12 @@ class ChatEvent(AgentProtocolModel):
 
     @model_validator(mode="after")
     def validate_event_payload(self) -> "ChatEvent":
+        if (
+            self.event_type == ChatEventType.RUN_STARTED
+            and self.request_id is None
+        ):
+            raise ValueError("run_started 事件必须包含 request_id")
+
         if self.event_type in {
             ChatEventType.TEXT_DELTA,
             ChatEventType.MESSAGE_COMPLETED,

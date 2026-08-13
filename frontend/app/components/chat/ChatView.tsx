@@ -18,6 +18,15 @@ export interface ChatLaunchRequest {
   openSidebar?: boolean;
 }
 
+type ResponsePhase =
+  | "connecting"
+  | "thinking"
+  | "slow"
+  | "working"
+  | "answering"
+  | "stopping"
+  | null;
+
 const GENERAL_QUICK_QUESTIONS = [
   "帮我随机起一卦，看看最近的工作机会",
   "我已经有一条卦例，想继续分析用神和动爻",
@@ -51,6 +60,7 @@ export function ChatView({
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [responsePhase, setResponsePhase] = useState<ResponsePhase>(null);
   const [pendingUser, setPendingUser] = useState<string | null>(null);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamingComplete, setStreamingComplete] = useState(false);
@@ -64,6 +74,10 @@ export function ChatView({
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const activeRunRef = useRef<{
+    sessionId: string;
+    requestId: string;
+  } | null>(null);
   const handledLaunchRef = useRef<number | null>(null);
   const skipNextRestoreRef = useRef(false);
   const currentSessionIdRef = useRef<string | null>(null);
@@ -72,6 +86,21 @@ export function ChatView({
   useEffect(() => {
     currentSessionIdRef.current = current?.id || null;
   }, [current?.id]);
+
+  useEffect(() => {
+    if (
+      !streaming ||
+      (responsePhase !== "connecting" && responsePhase !== "thinking")
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setResponsePhase((phase) =>
+        phase === "connecting" || phase === "thinking" ? "slow" : phase,
+      );
+    }, 10000);
+    return () => window.clearTimeout(timer);
+  }, [responsePhase, streaming]);
 
   const loadMessages = useCallback(
     async (session: ChatSession) => {
@@ -267,11 +296,17 @@ export function ChatView({
   }
 
   function handleStreamEvent(event: ChatEvent) {
+    if (event.event_type === "run_started") {
+      setResponsePhase("thinking");
+      return;
+    }
     if (event.event_type === "text_delta" && event.content) {
+      setResponsePhase("answering");
       setStreamingContent((content) => content + event.content);
       return;
     }
     if (event.event_type === "tool_call_started" && event.tool_call_id) {
+      setResponsePhase("working");
       setStreamingTools((tools) => [
         ...tools.filter((tool) => tool.id !== event.tool_call_id),
         {
@@ -287,6 +322,7 @@ export function ChatView({
         event.event_type === "tool_call_failed") &&
       event.tool_call_id
     ) {
+      setResponsePhase("answering");
       setStreamingTools((tools) =>
         tools.map((tool) =>
           tool.id === event.tool_call_id
@@ -304,6 +340,7 @@ export function ChatView({
       return;
     }
     if (event.event_type === "message_completed" && event.content) {
+      setResponsePhase(null);
       setStreamingContent(event.content);
       setStreamingComplete(true);
       return;
@@ -313,7 +350,32 @@ export function ChatView({
       return;
     }
     if (event.event_type === "error") {
+      setResponsePhase(null);
       setError(event.content || "问易助手暂时无法回答");
+    }
+  }
+
+  async function stopCurrentRun() {
+    const activeRun = activeRunRef.current;
+    if (!userId || !activeRun || responsePhase === "stopping") return;
+    setResponsePhase("stopping");
+    suggestionRequestRef.current += 1;
+    try {
+      await liuyaoApi.cancelChatRun(
+        apiBase,
+        userId,
+        activeRun.sessionId,
+        activeRun.requestId,
+      );
+    } catch (cancelError) {
+      setError(
+        cancelError instanceof Error
+          ? cancelError.message
+          : "停止本次回答失败",
+      );
+    } finally {
+      // 后端取消接口会先等待取消消息落库；此时再关闭浏览器流最稳定。
+      abortRef.current?.abort();
     }
   }
 
@@ -373,9 +435,15 @@ export function ChatView({
     let completedMessageId: string | null = null;
 
     const controller = new AbortController();
+    const requestId = crypto.randomUUID();
     abortRef.current?.abort();
     abortRef.current = controller;
+    activeRunRef.current = {
+      sessionId: activeSession.id,
+      requestId,
+    };
     setStreaming(true);
+    setResponsePhase("connecting");
     setPendingUser(message);
     setStreamingContent("");
     setStreamingComplete(false);
@@ -390,6 +458,7 @@ export function ChatView({
         userId,
         activeSession.id,
         message,
+        requestId,
         (event) => {
           handleStreamEvent(event);
           if (
@@ -434,8 +503,12 @@ export function ChatView({
       setStreamingComplete(false);
       setStreamingTools([]);
       setStreamingSuggestions([]);
+      setResponsePhase(null);
       setStreaming(false);
       if (abortRef.current === controller) abortRef.current = null;
+      if (activeRunRef.current?.requestId === requestId) {
+        activeRunRef.current = null;
+      }
     }
     if (completedMessageId && !controller.signal.aborted) {
       void requestSuggestions(
@@ -557,6 +630,7 @@ export function ChatView({
             messages={messages}
             pendingUser={pendingUser}
             streamingContent={streamingContent}
+            responsePhase={responsePhase}
             streamingComplete={streamingComplete}
             streamingTools={streamingTools}
             streamingSuggestions={streamingSuggestions}
@@ -572,9 +646,10 @@ export function ChatView({
           <ChatComposer
             disabled={!userId || sessionsLoading}
             streaming={streaming}
+            stopping={responsePhase === "stopping"}
             archived={current?.status === "archived"}
             onSend={sendMessage}
-            onStop={() => abortRef.current?.abort()}
+            onStop={() => void stopCurrentRun()}
           />
           <p>六爻解读仅供文化娱乐参考，不构成任何人生决策依据。</p>
         </footer>

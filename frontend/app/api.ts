@@ -1,6 +1,7 @@
 import type {
   ChatEvent,
   ChatMessage,
+  ChatRunCancelResponse,
   ChatSession,
   ChatSessionOpenResult,
   ChatSessionStatus,
@@ -160,6 +161,7 @@ async function streamChatEvents(
   _userId: string,
   sessionId: string,
   message: string,
+  clientRequestId: string,
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ) {
@@ -174,7 +176,10 @@ async function streamChatEvents(
           Accept: "text/event-stream",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({
+          message,
+          client_request_id: clientRequestId,
+        }),
         signal,
       },
     );
@@ -484,6 +489,7 @@ export const liuyaoApi = {
     _userId: string,
     sessionId: string,
     message: string,
+    clientRequestId: string,
     onEvent: (event: ChatEvent) => void,
     signal?: AbortSignal,
   ) {
@@ -492,8 +498,22 @@ export const liuyaoApi = {
       _userId,
       sessionId,
       message,
+      clientRequestId,
       onEvent,
       signal,
+    );
+  },
+
+  cancelChatRun(
+    apiBase: string,
+    _userId: string,
+    sessionId: string,
+    requestId: string,
+  ) {
+    return request<ChatRunCancelResponse>(
+      apiBase,
+      `/chat/sessions/${sessionId}/runs/${requestId}/cancel`,
+      { method: "POST" },
     );
   },
 

@@ -59,6 +59,7 @@ export function ChatMessageList({
   messages,
   pendingUser,
   streamingContent,
+  responsePhase,
   streamingComplete,
   streamingTools,
   streamingSuggestions,
@@ -71,6 +72,7 @@ export function ChatMessageList({
   messages: ChatMessage[];
   pendingUser: string | null;
   streamingContent: string;
+  responsePhase: "connecting" | "thinking" | "slow" | "working" | "answering" | "stopping" | null;
   streamingComplete: boolean;
   streamingTools: StreamingToolState[];
   streamingSuggestions: string[];
@@ -127,7 +129,6 @@ export function ChatMessageList({
               className={`chat-message ${message.role} ${message.status}`}
               key={message.id}
             >
-              <span>{message.role === "user" ? "问" : "易"}</span>
               <div>
                 {message.role === "assistant" ? (
                   <MarkdownMessage content={message.content} />
@@ -148,9 +149,26 @@ export function ChatMessageList({
 
         {pendingUser && (
           <article className="chat-message user pending">
-            <span>问</span>
             <div><p>{pendingUser}</p></div>
           </article>
+        )}
+
+        {responsePhase &&
+          !streamingContent &&
+          !streamingTools.some((tool) => tool.status === "running") && (
+          <div className={`chat-response-status ${responsePhase}`} role="status">
+            <span className="chat-response-dots" aria-hidden="true">
+              <i /><i /><i />
+            </span>
+            <span>
+              {responsePhase === "connecting" && "正在连接问易助手…"}
+              {responsePhase === "thinking" && "正在理解你的问题…"}
+              {responsePhase === "slow" && "模型响应较慢，仍在耐心等待…"}
+              {responsePhase === "working" && "正在处理所需信息…"}
+              {responsePhase === "answering" && "正在组织回答…"}
+              {responsePhase === "stopping" && "正在停止本次回答…"}
+            </span>
+          </div>
         )}
 
         {streamingTools.map((tool) => (
@@ -163,7 +181,6 @@ export function ChatMessageList({
 
         {streamingContent && (
           <article className="chat-message assistant streaming">
-            <span>易</span>
             <div>
               <MarkdownMessage content={streamingContent} />
               {!streamingComplete && (

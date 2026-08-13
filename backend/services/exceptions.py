@@ -44,6 +44,10 @@ class ChatSessionArchivedError(Exception):
     """归档会话不能继续发送消息。"""
 
 
+class ChatRunAlreadyActiveError(Exception):
+    """同一聊天会话已经有一轮 Agent Run 正在执行。"""
+
+
 class ChatDivinationOwnershipError(Exception):
     """准备关联的卦例不存在或不属于当前用户。"""
 

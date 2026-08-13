@@ -5,12 +5,14 @@ import { useState } from "react";
 export function ChatComposer({
   disabled,
   streaming,
+  stopping,
   archived,
   onSend,
   onStop,
 }: {
   disabled: boolean;
   streaming: boolean;
+  stopping: boolean;
   archived: boolean;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
@@ -47,8 +49,8 @@ export function ChatComposer({
       <div>
         <small>{value.length} / 10000</small>
         {streaming ? (
-          <button type="button" className="stop" onClick={onStop}>
-            停止
+          <button type="button" className="stop" onClick={onStop} disabled={stopping}>
+            {stopping ? "正在停止…" : "停止"}
           </button>
         ) : (
           <button

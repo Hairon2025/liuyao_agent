@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime, timezone
 
 import pytest
@@ -27,6 +28,7 @@ from backend.schema.api.divination import QiguaMethod
 from backend.services.chat import ChatService
 from backend.services.chat_divination_workflow import ChatDivinationWorkflow
 from backend.services.divination import DivinationService
+from backend.services.chat_run_registry import ChatRunRegistry
 
 
 class FakeRuntime:
@@ -123,6 +125,25 @@ class FakeSuggestedQuestionAgent:
         return SuggestedQuestions(
             questions=["用神旺衰怎么看？", "动爻有什么影响？", "应期如何判断？"]
         )
+
+
+class CancellableRuntime:
+    """写入一条模拟 SDK Item 后等待，用于验证显式取消与上下文回滚。"""
+
+    def __init__(self):
+        self.started = asyncio.Event()
+
+    async def stream(self, **kwargs):
+        await kwargs["session"].add_items(
+            [{"role": "user", "content": "本轮不完整输入"}]
+        )
+        self.started.set()
+        await asyncio.Event().wait()
+        if False:  # pragma: no cover - 保持异步生成器类型
+            yield ChatEvent(
+                event_type=ChatEventType.MESSAGE_COMPLETED,
+                content="不会生成",
+            )
 
 
 @pytest.mark.asyncio
@@ -313,5 +334,95 @@ async def test_chat_service_defers_tool_call_persistence_until_tool_finishes(
             "tool_result",
             "text",
         ]
+
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_chat_service_explicit_cancel_persists_notice_and_rolls_back_sdk_turn(
+    tmp_path,
+):
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{(tmp_path / 'cancel-chat.db').as_posix()}",
+        poolclass=NullPool,
+    )
+    enable_sqlite_foreign_keys(engine)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+
+    async with factory() as session:
+        user = User()
+        session.add(user)
+        await session.commit()
+        user_id = user.id
+
+    async with factory() as session:
+        sessions = ChatSessionRepository(session)
+        messages = ChatMessageRepository(session)
+        divinations = DivinationRepository(session)
+        divination_service = DivinationService(divinations, session)
+        runtime = CancellableRuntime()
+        registry = ChatRunRegistry()
+        agent_sessions = AgentSessionFactory(engine=engine, recent_limit=10)
+        service = ChatService(
+            session_repository=sessions,
+            message_repository=messages,
+            divination_repository=divinations,
+            chatbot=runtime,  # type: ignore[arg-type]
+            agent_session_factory=agent_sessions,
+            divination_service=divination_service,
+            chat_divination_workflow=ChatDivinationWorkflow(
+                chat_session_repository=sessions,
+                divination_service=divination_service,
+                session=session,
+            ),
+            session=session,
+            run_registry=registry,
+        )
+        created = await service.create_session(ChatSessionCreate(), user_id)
+        request_id = uuid.uuid4()
+        await service.prepare_run(
+            request_id=request_id,
+            session_id=created.id,
+            user_id=user_id,
+        )
+
+        async def consume_stream():
+            return [
+                event
+                async for event in service.stream_reply(
+                    session_id=created.id,
+                    user_id=user_id,
+                    user_message="我还没有输入完",
+                    request_id=request_id,
+                )
+            ]
+
+        stream_task = asyncio.create_task(consume_stream())
+        await asyncio.wait_for(runtime.started.wait(), timeout=2)
+        cancelled = await service.cancel_run(
+            request_id=request_id,
+            session_id=created.id,
+            user_id=user_id,
+        )
+
+        assert cancelled.status == "cancelled"
+        with pytest.raises(asyncio.CancelledError):
+            await stream_task
+
+        persisted = await service.list_messages(created.id, user_id)
+        assert [(item.role, item.status, item.content) for item in persisted] == [
+            ("user", "cancelled", "我还没有输入完"),
+            ("assistant", "cancelled", "已停止本次回答。"),
+        ]
+        assert await agent_sessions.create(created.id).get_items() == []
+
+        repeated = await service.cancel_run(
+            request_id=request_id,
+            session_id=created.id,
+            user_id=user_id,
+        )
+        assert repeated.status == "already_finished"
 
     await engine.dispose()

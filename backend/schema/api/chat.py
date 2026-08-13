@@ -164,6 +164,14 @@ class ChatSuggestionsResponse(BaseModel):
     cached: bool
 
 
+class ChatRunCancelResponse(BaseModel):
+    """显式停止一轮 Chat Agent 执行的结果。"""
+
+    request_id: uuid.UUID
+    status: Literal["cancelled", "cancelling", "already_finished"]
+    message: str
+
+
 class ChatTurnRequest(BaseModel):
     """向会话发送一条用户消息。"""
 
@@ -171,6 +179,7 @@ class ChatTurnRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=10000)
     model: str | None = Field(default=None, min_length=1, max_length=100)
+    client_request_id: uuid.UUID = Field(default_factory=uuid.uuid4)
 
     @field_validator("message")
     @classmethod

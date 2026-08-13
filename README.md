@@ -176,6 +176,7 @@ docker compose up -d
 | `DELETE` | `/chat/sessions/{id}` | 删除会话及其消息 |
 | `GET` | `/chat/sessions/{id}/messages` | 按消息序号游标读取历史 |
 | `POST` | `/chat/sessions/{id}/messages/stream` | 通过命名 SSE 执行一轮 Agents SDK 对话 |
+| `POST` | `/chat/sessions/{id}/runs/{request_id}/cancel` | 显式停止一轮正在执行的 Agent 对话 |
 | `POST` | `/chat/sessions/{id}/messages/{message_id}/suggestions` | 为已完成回答异步生成并缓存三条追问 |
 
 身份通过 HttpOnly Cookie 中的随机 Session Token 传递，数据库只保存 Token 哈希。
@@ -271,18 +272,26 @@ MEMORY_SUMMARY_KEEP_RECENT_ITEMS
 ```json
 {
   "message": "帮我随机起一卦，看看最近的工作机会",
-  "model": null
+  "model": null,
+  "client_request_id": "392b98de-60cf-4ef0-9387-d43349dc4973"
 }
 ```
 
 响应使用命名 SSE，每个 `data` 都是完整 `ChatEvent` JSON：
 
+- `run_started`：服务端已接收本轮请求，可向用户显示“正在理解”；
 - `text_delta`：可立即追加显示的文本增量；
 - `tool_call_started`：工具开始；
 - `tool_call_completed` / `tool_call_failed`：工具结果；
 - `message_completed`：本轮完整可见文本和已落库的 `message_id`；
 - `error`：结构化错误；
 - `done`：流结束，data 为 `[DONE]`。
+
+用户停止生成时，前端先调用
+`POST /chat/sessions/{id}/runs/{client_request_id}/cancel`，等待服务端将用户消息与
+取消提示标记为 `cancelled` 后再关闭 SSE。未完成的本轮 SDK Items 会被撤销；已经完成
+并持久化的排盘等工具结果予以保留。当前运行登记使用单进程内存实现，多实例部署时应
+迁移到 Redis。
 
 前端收到 `message_completed.message_id` 后调用
 `POST /chat/sessions/{id}/messages/{message_id}/suggestions`。接口只接收消息 ID，

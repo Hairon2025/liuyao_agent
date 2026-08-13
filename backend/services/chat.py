@@ -29,6 +29,7 @@ from backend.schema.agent import (
 )
 from backend.schema.api.chat import (
     ChatMessageResponse,
+    ChatRunCancelResponse,
     ChatSessionCreate,
     ChatSessionOpenRequest,
     ChatSessionOpenResponse,
@@ -38,10 +39,16 @@ from backend.schema.api.chat import (
 from backend.services.exceptions import (
     ChatDivinationOwnershipError,
     ChatMessageNotFoundError,
+    ChatRunAlreadyActiveError,
     ChatSessionArchivedError,
     ChatSessionNotFoundError,
     ChatSuggestionGenerationError,
     ChatSuggestionSourceError,
+)
+from backend.services.chat_run_registry import (
+    ChatRunConflictError,
+    ChatRunRegistry,
+    chat_run_registry,
 )
 from backend.services.chat_divination_workflow import ChatDivinationWorkflow
 from backend.services.divination import DivinationService
@@ -68,6 +75,7 @@ class ChatService:
         session: AsyncSession,
         suggested_question_agent: SuggestedQuestionAgent | None = None,
         memory_compactor: ChatMemoryCompactor | None = None,
+        run_registry: ChatRunRegistry = chat_run_registry,
     ):
         self._session_repository = session_repository
         self._message_repository = message_repository
@@ -79,6 +87,49 @@ class ChatService:
         self._session = session
         self._suggested_question_agent = suggested_question_agent
         self._memory_compactor = memory_compactor
+        self._run_registry = run_registry
+
+    async def prepare_run(
+        self,
+        *,
+        request_id: uuid.UUID,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> None:
+        """预登记本轮执行，让独立 HTTP 请求能够可靠停止 SSE 任务。"""
+        try:
+            await self._run_registry.prepare(
+                request_id=request_id,
+                session_id=session_id,
+                user_id=user_id,
+            )
+        except ChatRunConflictError:
+            raise ChatRunAlreadyActiveError(str(session_id)) from None
+
+    async def cancel_run(
+        self,
+        *,
+        request_id: uuid.UUID,
+        session_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> ChatRunCancelResponse:
+        """显式停止当前会话的一轮 Agent 执行。"""
+        await self._get_session_model(session_id, user_id)
+        cancel_status = await self._run_registry.cancel(
+            request_id=request_id,
+            session_id=session_id,
+            user_id=user_id,
+        )
+        messages = {
+            "cancelled": "已停止本次回答。",
+            "cancelling": "停止请求已发送，模型正在结束本次回答。",
+            "already_finished": "本次回答已经结束，无需再次停止。",
+        }
+        return ChatRunCancelResponse(
+            request_id=request_id,
+            status=cancel_status,
+            message=messages[cancel_status],
+        )
 
     async def create_session(
         self,
@@ -259,62 +310,89 @@ class ChatService:
         session_id: uuid.UUID,
         user_id: uuid.UUID,
         user_message: str,
+        request_id: uuid.UUID | None = None,
         model: str | None = None,
     ) -> AsyncIterator[ChatEvent]:
         """持久化用户输入，执行 Agent，并逐事件保存可观察结果。"""
-        chat_session = await self._get_session_model(session_id, user_id)
-        if chat_session.status != "active":
-            raise ChatSessionArchivedError(str(session_id))
-
-        message_text = user_message.strip()
-        await self._append_message(
-            chat_session,
-            user_id=user_id,
-            role="user",
-            content=message_text,
-            divination_id=chat_session.active_divination_id,
-        )
-        updates: dict[str, Any] = {"last_message_at": utc_now()}
-        if chat_session.title is None:
-            updates["title"] = message_text[:100]
-        await self._session_repository.update(chat_session, updates)
-        await self._session.commit()
-
-        memory_summary = chat_session.summary
-        if self._memory_compactor is not None:
-            try:
-                compaction = await self._memory_compactor.compact_if_needed(
-                    session_id=session_id,
-                    user_id=user_id,
-                )
-                memory_summary = compaction.summary
-            except Exception:
-                # 摘要是派生缓存；压缩失败时保留原始 SDK Items 并继续主对话。
-                await self._session.rollback()
-                logger.exception(
-                    "会话 %s 的长期记忆压缩失败，本轮使用未压缩上下文",
-                    session_id,
-                )
-
-        run_context = AgentRunContext(
-            user_id=user_id,
-            session_id=session_id,
-            divination_service=self._divination_service,
-            chat_divination_workflow=self._chat_divination_workflow,
-            active_divination_id=chat_session.active_divination_id,
-            workflow_state=chat_session.workflow_state,
-        )
-        sdk_session = self._agent_session_factory.create(
-            session_id,
-            memory_summary=memory_summary,
-        )
+        request_id = request_id or uuid.uuid4()
+        # Service 级测试和内部调用可以不经过 API 预登记；HTTP 路由则会在
+        # 返回 StreamingResponse 前登记，以便停止请求尽早找到本轮任务。
+        if not await self._run_registry.is_prepared(request_id):
+            await self.prepare_run(
+                request_id=request_id,
+                session_id=session_id,
+                user_id=user_id,
+            )
+        user_message_model: ChatMessage | None = None
+        user_message_id: uuid.UUID | None = None
+        sdk_session = None
+        sdk_item_count_before_run: int | None = None
         visible_chunks: list[str] = []
-        # SDK 会在后台执行 Function Tool，并先发出 tool_call_started。
-        # 工具与本 Service 共享请求级 AsyncSession，因此工具完成前不能在这里
-        # flush；先缓存开始事件，收到结果后再按调用、结果顺序持久化。
         pending_tool_calls: dict[str, ChatEvent] = {}
         terminal_event_seen = False
+        side_effect_completed = False
         try:
+            chat_session = await self._get_session_model(session_id, user_id)
+            if chat_session.status != "active":
+                raise ChatSessionArchivedError(str(session_id))
+
+            message_text = user_message.strip()
+            user_message_model = await self._append_message(
+                chat_session,
+                user_id=user_id,
+                role="user",
+                content=message_text,
+                payload={"client_request_id": str(request_id)},
+                divination_id=chat_session.active_divination_id,
+            )
+            updates: dict[str, Any] = {"last_message_at": utc_now()}
+            if chat_session.title is None:
+                updates["title"] = message_text[:100]
+            await self._session_repository.update(chat_session, updates)
+            await self._session.commit()
+            user_message_id = user_message_model.id
+
+            await self._run_registry.activate(request_id)
+            yield ChatEvent(
+                event_type=ChatEventType.RUN_STARTED,
+                request_id=request_id,
+            )
+
+            memory_summary = chat_session.summary
+            if self._memory_compactor is not None:
+                try:
+                    compaction = await self._memory_compactor.compact_if_needed(
+                        session_id=session_id,
+                        user_id=user_id,
+                    )
+                    memory_summary = compaction.summary
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    # 摘要是派生缓存；失败时保留 SDK Items 并继续主对话。
+                    await self._session.rollback()
+                    logger.exception(
+                        "会话 %s 的长期记忆压缩失败，本轮使用未压缩上下文",
+                        session_id,
+                    )
+
+            run_context = AgentRunContext(
+                user_id=user_id,
+                session_id=session_id,
+                divination_service=self._divination_service,
+                chat_divination_workflow=self._chat_divination_workflow,
+                active_divination_id=chat_session.active_divination_id,
+                workflow_state=chat_session.workflow_state,
+            )
+            sdk_session = self._agent_session_factory.create(
+                session_id,
+                memory_summary=memory_summary,
+            )
+            sdk_item_count_before_run = len(await sdk_session.get_items())
+
+            # SDK 会在后台执行 Function Tool，并先发出 tool_call_started。
+            # 工具与本 Service 共享请求级 AsyncSession，因此工具完成前不能在这里
+            # flush；先缓存开始事件，收到结果后再按调用、结果顺序持久化。
             async for event in self._chatbot.stream(
                 user_message=message_text,
                 context=run_context,
@@ -347,6 +425,16 @@ class ChatService:
                         user_id,
                         event,
                     )
+                    if (
+                        event.event_type == ChatEventType.TOOL_CALL_COMPLETED
+                        and event.tool_name
+                        in {
+                            "process_divination_request",
+                            "request_initial_interpretation",
+                            "cancel_divination_request",
+                        }
+                    ):
+                        side_effect_completed = True
                     if (
                         event.tool_result is not None
                         and isinstance(event.tool_result.data, dict)
@@ -396,11 +484,35 @@ class ChatService:
 
                 yield outbound_event
         except asyncio.CancelledError:
+            await self._session.rollback()
+            if sdk_session is not None and sdk_item_count_before_run is not None:
+                await self._rollback_sdk_turn(
+                    sdk_session,
+                    sdk_item_count_before_run,
+                )
             if not terminal_event_seen:
+                chat_session = await self._get_session_model(
+                    session_id,
+                    user_id,
+                )
+                if user_message_id is not None:
+                    persisted_user = await self._message_repository.get_for_user(
+                        user_message_id,
+                        user_id,
+                    )
+                    if persisted_user is not None:
+                        await self._message_repository.update(
+                            persisted_user,
+                            {"status": "cancelled"},
+                        )
                 await self._persist_failed_assistant(
                     chat_session,
                     user_id,
-                    "".join(visible_chunks) or "生成已取消",
+                    (
+                        "已停止本次回答，已经完成的排盘操作已保留。"
+                        if side_effect_completed
+                        else "已停止本次回答。"
+                    ),
                     status="cancelled",
                 )
             raise
@@ -408,6 +520,24 @@ class ChatService:
             await self._session.rollback()
             logger.exception("Chatbot 流式执行或消息持久化失败")
             raise
+        finally:
+            await self._run_registry.finish(request_id)
+
+    @staticmethod
+    async def _rollback_sdk_turn(
+        sdk_session: Any,
+        baseline_count: int,
+    ) -> None:
+        """撤销本轮新增的 SDK Items，同时保留取消前的会话上下文。"""
+        try:
+            current_count = len(await sdk_session.get_items())
+            while current_count > baseline_count:
+                popped = await sdk_session.pop_item()
+                if popped is None:
+                    break
+                current_count -= 1
+        except Exception:
+            logger.exception("取消 Chat Run 时回滚本轮 SDK Items 失败")
 
     async def generate_suggestions(
         self,
