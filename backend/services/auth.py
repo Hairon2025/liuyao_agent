@@ -120,6 +120,7 @@ class AuthService:
         self,
         username: str,
         password: str,
+        current_user: User | None = None,
         current_token: str | None = None,
     ) -> AuthResult:
         user = await self._auth.get_user_with_credential(
@@ -139,6 +140,20 @@ class AuthService:
                 hash_session_token(current_token),
                 utc_now(),
             )
+
+        # 游客登录已有账号时，把当前游客 Cookie 下产生的卦例等数据归并到
+        # 目标账号。注册用户之间切换账号绝不能转移数据，避免越权合并。
+        if (
+            current_user is not None
+            and current_user.user_type == "guest"
+            and current_user.id != user.id
+        ):
+            await self._users.reassign_owned_resources(
+                current_user.id,
+                user.id,
+            )
+            await self._users.delete_guest(current_user.id)
+
         result = await self._issue_session(user)
         await self._session.commit()
         await self._session.refresh(user)

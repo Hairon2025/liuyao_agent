@@ -57,6 +57,41 @@ def test_login_logout_and_invalid_password(client):
     assert logged_in.json()["user"]["username"] == "test_user"
 
 
+def test_guest_login_existing_account_preserves_guest_divination(client):
+    """游客排盘后登录已有账号，原卦例应直接归入该账号。"""
+    registered_user_id = client.get("/auth/me").json()["user"]["id"]
+    assert client.post("/auth/logout").status_code == 204
+
+    guest = client.post("/auth/guests", json={})
+    assert guest.status_code == 201
+    guest_user_id = guest.json()["user"]["id"]
+    assert guest_user_id != registered_user_id
+
+    created = client.post(
+        "/divinations",
+        json={
+            "method": "manual",
+            "question": "游客登录前排好的卦",
+            "numbers": [2, 1, 2, 2, 1, 2],
+            "generate_markdown": True,
+        },
+    )
+    assert created.status_code == 200
+    divination_id = created.json()["divination_id"]
+
+    logged_in = client.post(
+        "/auth/login",
+        json={"username": "test_user", "password": "password123"},
+    )
+    assert logged_in.status_code == 200
+    assert logged_in.json()["user"]["id"] == registered_user_id
+
+    loaded = client.get(f"/divinations/{divination_id}")
+    assert loaded.status_code == 200
+    assert loaded.json()["paipan"]["question"] == "游客登录前排好的卦"
+    assert divination_id in client.get("/divinations").json()
+
+
 def test_duplicate_username_is_rejected(client):
     client.post("/auth/logout")
     client.post("/auth/guests", json={})

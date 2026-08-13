@@ -85,12 +85,14 @@ async def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
+    current_user: OptionalUserDep,
     service: AuthServiceDep,
 ) -> AuthResponse:
     try:
         result = await service.login(
             payload.username,
             payload.password,
+            current_user,
             request.cookies.get(settings.auth_cookie_name),
         )
     except InvalidCredentialsError:

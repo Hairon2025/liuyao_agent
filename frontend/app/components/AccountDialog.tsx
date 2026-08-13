@@ -329,19 +329,22 @@ export function AccountDialog({
                     required
                   />
                 </label>
-                <label>
-                  <span>正式解读模型（可选）</span>
-                  <input
-                    value={form.analyst_model ?? ""}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        analyst_model: event.target.value,
-                      }))
-                    }
-                    placeholder="留空使用默认模型"
-                  />
-                </label>
+                {/* 暂不开放正式解读模型的独立配置，后端字段继续保留。 */}
+                {/*
+                  <label>
+                    <span>正式解读模型（可选）</span>
+                    <input
+                      value={form.analyst_model ?? ""}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          analyst_model: event.target.value,
+                        }))
+                      }
+                      placeholder="留空使用默认模型"
+                    />
+                  </label>
+                */}
                 <label>
                   <span>追问建议模型（可选）</span>
                   <input
@@ -355,19 +358,22 @@ export function AccountDialog({
                     placeholder="可填写较轻量模型"
                   />
                 </label>
-                <label>
-                  <span>记忆摘要模型（可选）</span>
-                  <input
-                    value={form.memory_model ?? ""}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        memory_model: event.target.value,
-                      }))
-                    }
-                    placeholder="可填写较轻量模型"
-                  />
-                </label>
+                {/* 暂不开放记忆摘要模型的独立配置，后端字段继续保留。 */}
+                {/*
+                  <label>
+                    <span>记忆摘要模型（可选）</span>
+                    <input
+                      value={form.memory_model ?? ""}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          memory_model: event.target.value,
+                        }))
+                      }
+                      placeholder="可填写较轻量模型"
+                    />
+                  </label>
+                */}
                 <label>
                   <span>超时时间（秒）</span>
                   <input
