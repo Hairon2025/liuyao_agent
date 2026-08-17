@@ -202,9 +202,13 @@ def get_chat_service(
         model_factory=_model_factory(config, config.analyst_model),
         usage_recorder=usage,
     )
-    suggested = SuggestedQuestionAgent(
-        model_factory=_model_factory(config, config.suggestion_model),
-        usage_recorder=usage,
+    suggested = (
+        SuggestedQuestionAgent(
+            model_factory=_model_factory(config, config.suggestion_model),
+            usage_recorder=usage,
+        )
+        if config.suggestion_enabled
+        else None
     )
     memory_summary = MemorySummaryAgent(
         model_factory=_model_factory(config, config.memory_model),
@@ -244,5 +248,6 @@ def get_chat_service(
         chat_divination_workflow=workflow,
         session=session,
         suggested_question_agent=suggested,
+        suggestions_enabled=config.suggestion_enabled,
         memory_compactor=memory_compactor,
     )

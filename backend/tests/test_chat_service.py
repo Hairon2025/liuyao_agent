@@ -230,16 +230,17 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
         assert messages[-1].content == "整体平稳。"
         assert updated.active_divination_id == divination_id
         assert updated.title == "请继续分析"
+        assistant_message_id = messages[-1].id
 
         generated = await service.generate_suggestions(
             session_id=created.id,
             user_id=user_id,
-            assistant_message_id=messages[-1].id,
+            assistant_message_id=assistant_message_id,
         )
         cached = await service.generate_suggestions(
             session_id=created.id,
             user_id=user_id,
-            assistant_message_id=messages[-1].id,
+            assistant_message_id=assistant_message_id,
         )
         messages = await service.list_messages(created.id, user_id)
 
@@ -253,6 +254,28 @@ async def test_chat_service_persists_sdk_runtime_events(tmp_path):
             messages[-2].id
         )
         assert len(messages[-1].payload["questions"]) == 3
+
+        # 关闭功能后，即使已有缓存也应返回空列表，且不再次调用追问模型。
+        disabled_service = ChatService(
+            session_repository=session_repository,
+            message_repository=message_repository,
+            divination_repository=divination_repository,
+            chatbot=runtime,  # type: ignore[arg-type]
+            agent_session_factory=agent_sessions,
+            divination_service=divination_service,
+            chat_divination_workflow=workflow,
+            session=session,
+            suggested_question_agent=suggestion_agent,
+            suggestions_enabled=False,
+        )
+        disabled = await disabled_service.generate_suggestions(
+            session_id=created.id,
+            user_id=user_id,
+            assistant_message_id=assistant_message_id,
+        )
+        assert disabled.questions == []
+        assert disabled.cached is False
+        assert len(suggestion_agent.calls) == 1
 
     await engine.dispose()
 

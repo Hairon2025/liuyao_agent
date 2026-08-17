@@ -1388,6 +1388,7 @@ export default function Home() {
         <ChatView
           apiBase={apiBase}
           userId={userId}
+          suggestionsEnabled={llmSettings?.suggestion_enabled ?? true}
           launchRequest={chatLaunch}
           onLaunchConsumed={consumeChatLaunch}
           onOpenDivination={(id) => void openDivinationFromChat(id)}

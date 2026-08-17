@@ -28,6 +28,7 @@ const DEFAULT_FORM: UserLLMSettingsInput = {
   api_key: "",
   model: "deepseek-v4-pro",
   analyst_model: "",
+  suggestion_enabled: true,
   suggestion_model: "",
   memory_model: "",
   timeout_seconds: 120,
@@ -42,6 +43,7 @@ function settingsToForm(
     api_key: "",
     model: settings.model,
     analyst_model: settings.analyst_model ?? "",
+    suggestion_enabled: settings.suggestion_enabled,
     suggestion_model: settings.suggestion_model ?? "",
     memory_model: settings.memory_model ?? "",
     timeout_seconds: settings.timeout_seconds,
@@ -345,7 +347,42 @@ export function AccountDialog({
                     />
                   </label>
                 */}
-                <label>
+                <div className="llm-feature-setting full-row">
+                  <div>
+                    <strong>追问建议</strong>
+                    <span>回答完成后生成可点击的后续问题，会额外消耗 Token</span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.suggestion_enabled ?? true}
+                    className={
+                      form.suggestion_enabled ?? true
+                        ? "llm-feature-switch active"
+                        : "llm-feature-switch"
+                    }
+                    onClick={() =>
+                      setForm((current) => ({
+                        ...current,
+                        suggestion_enabled: !(
+                          current.suggestion_enabled ?? true
+                        ),
+                      }))
+                    }
+                  >
+                    <i aria-hidden="true" />
+                    <span>
+                      {form.suggestion_enabled ?? true ? "已开启" : "已关闭"}
+                    </span>
+                  </button>
+                </div>
+                <label
+                  className={
+                    form.suggestion_enabled ?? true
+                      ? ""
+                      : "llm-setting-disabled"
+                  }
+                >
                   <span>追问建议模型（可选）</span>
                   <input
                     value={form.suggestion_model ?? ""}
@@ -355,7 +392,8 @@ export function AccountDialog({
                         suggestion_model: event.target.value,
                       }))
                     }
-                    placeholder="可填写较轻量模型"
+                    placeholder="留空使用默认模型"
+                    disabled={!(form.suggestion_enabled ?? true)}
                   />
                 </label>
                 {/* 暂不开放记忆摘要模型的独立配置，后端字段继续保留。 */}

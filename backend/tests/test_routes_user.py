@@ -151,6 +151,7 @@ def test_llm_settings_never_return_api_key_and_can_preserve_existing_key(client)
     current = client.get("/users/me/llm-settings")
     assert current.status_code == 200
     assert current.json()["api_key_last4"] == "-key"
+    assert current.json()["suggestion_enabled"] is True
     assert "api_key" not in current.json()
     assert "ciphertext" not in current.text
 
@@ -160,11 +161,13 @@ def test_llm_settings_never_return_api_key_and_can_preserve_existing_key(client)
             "base_url": "https://another.example.com/v1",
             "model": "another-model",
             "memory_model": "cheap-memory",
+            "suggestion_enabled": False,
         },
     )
     assert updated.status_code == 200
     assert updated.json()["api_key_last4"] == "-key"
     assert updated.json()["memory_model"] == "cheap-memory"
+    assert updated.json()["suggestion_enabled"] is False
 
 
 def test_llm_settings_reject_private_base_url(client):

@@ -42,6 +42,7 @@ const DIVINATION_QUICK_QUESTIONS = [
 export function ChatView({
   apiBase,
   userId,
+  suggestionsEnabled,
   launchRequest,
   onLaunchConsumed,
   onOpenDivination,
@@ -49,6 +50,7 @@ export function ChatView({
 }: {
   apiBase: string;
   userId: string | null;
+  suggestionsEnabled: boolean;
   launchRequest: ChatLaunchRequest | null;
   onLaunchConsumed: (token: number) => void;
   onOpenDivination: (id: string) => void;
@@ -510,7 +512,11 @@ export function ChatView({
         activeRunRef.current = null;
       }
     }
-    if (completedMessageId && !controller.signal.aborted) {
+    if (
+      suggestionsEnabled &&
+      completedMessageId &&
+      !controller.signal.aborted
+    ) {
       void requestSuggestions(
         activeSession.id,
         completedMessageId,

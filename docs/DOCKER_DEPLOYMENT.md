@@ -152,9 +152,9 @@ timedatectl
 更新代码并重建：
 
 ```bash
-git pull
-docker compose build
-docker compose up -d
+git pull # 拉取 git 最新代码
+docker compose build # 构建镜像
+docker compose up -d # 运行 docker 容器
 ```
 
 如果本次更新前已经部署过旧镜像，需要重新构建三个服务才能安装时区数据：

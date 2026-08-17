@@ -5,7 +5,16 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, Uuid
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
+    Uuid,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.db.base import Base
@@ -37,6 +46,12 @@ class UserLLMSettings(Base):
     api_key_last4: Mapped[str] = mapped_column(String(4), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     analyst_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    suggestion_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=true(),
+    )
     suggestion_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     memory_model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     timeout_seconds: Mapped[float] = mapped_column(

@@ -136,6 +136,7 @@ Argon2 生成哈希。
 | `api_key_last4` | String(4) | 否 | 仅用于前端提示的末四位 |
 | `model` | String(100) | 否 | 默认模型 |
 | `analyst_model` | String(100) | 是 | 单次正式解读 Agent 模型；空值继承默认模型 |
+| `suggestion_enabled` | Boolean | 否 | 是否生成追问建议；关闭后不调用追问 Agent |
 | `suggestion_model` | String(100) | 是 | 推荐追问 Agent 模型；空值继承默认模型 |
 | `memory_model` | String(100) | 是 | 长期摘要 Agent 模型；空值继承默认模型 |
 | `timeout_seconds` | Float | 否 | 模型请求超时时间 |

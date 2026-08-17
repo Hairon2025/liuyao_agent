@@ -27,6 +27,7 @@ class ResolvedUserLLMConfig:
     base_url: str
     model: str
     analyst_model: str
+    suggestion_enabled: bool
     suggestion_model: str
     memory_model: str
     timeout_seconds: float
@@ -102,6 +103,7 @@ class UserLLMSettingsService:
             base_url=settings.base_url,
             model=settings.model,
             analyst_model=settings.analyst_model or settings.model,
+            suggestion_enabled=settings.suggestion_enabled,
             suggestion_model=settings.suggestion_model or settings.model,
             memory_model=settings.memory_model or settings.model,
             timeout_seconds=settings.timeout_seconds,
@@ -144,6 +146,7 @@ class UserLLMSettingsService:
             api_key_last4=settings.api_key_last4,
             model=settings.model,
             analyst_model=settings.analyst_model,
+            suggestion_enabled=settings.suggestion_enabled,
             suggestion_model=settings.suggestion_model,
             memory_model=settings.memory_model,
             timeout_seconds=settings.timeout_seconds,

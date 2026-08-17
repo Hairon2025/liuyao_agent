@@ -20,6 +20,7 @@ class UserLLMSettingsUpsert(BaseModel):
     api_key: str | None = Field(default=None, min_length=1, max_length=1000)
     model: str = Field(..., min_length=1, max_length=100)
     analyst_model: str | None = Field(default=None, max_length=100)
+    suggestion_enabled: bool = True
     suggestion_model: str | None = Field(default=None, max_length=100)
     memory_model: str | None = Field(default=None, max_length=100)
     timeout_seconds: float = Field(default=120.0, ge=10, le=300)
@@ -49,6 +50,7 @@ class UserLLMSettingsResponse(BaseModel):
     api_key_last4: str
     model: str
     analyst_model: str | None
+    suggestion_enabled: bool
     suggestion_model: str | None
     memory_model: str | None
     timeout_seconds: float

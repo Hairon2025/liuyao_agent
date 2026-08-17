@@ -74,6 +74,7 @@ class ChatService:
         chat_divination_workflow: ChatDivinationWorkflow,
         session: AsyncSession,
         suggested_question_agent: SuggestedQuestionAgent | None = None,
+        suggestions_enabled: bool = True,
         memory_compactor: ChatMemoryCompactor | None = None,
         run_registry: ChatRunRegistry = chat_run_registry,
     ):
@@ -86,6 +87,7 @@ class ChatService:
         self._chat_divination_workflow = chat_divination_workflow
         self._session = session
         self._suggested_question_agent = suggested_question_agent
+        self._suggestions_enabled = suggestions_enabled
         self._memory_compactor = memory_compactor
         self._run_registry = run_registry
 
@@ -564,6 +566,14 @@ class ChatService:
             or not assistant_message.content
         ):
             raise ChatSuggestionSourceError(str(assistant_message_id))
+
+        # 用户关闭追问建议后，不返回历史缓存，也绝不触发新的模型调用。
+        if not self._suggestions_enabled:
+            return ChatSuggestionsResponse(
+                source_message_id=assistant_message_id,
+                questions=[],
+                cached=False,
+            )
 
         cached = await self._message_repository.get_suggestions_for_source(
             assistant_message_id,

@@ -211,7 +211,7 @@ docker compose up -d
   同时作为聊天正文落库。
 - 主 SSE 只负责回答；`message_completed` 返回已落库的 `message_id`，前端随后
   异步调用追问接口，不会让低成本追问模型阻塞主回答。
-- `SuggestedQuestionAgent` 使用服务端裁剪后的最新问答生成 JSON 追问建议；
+- `SuggestedQuestionAgent` 使用服务端裁剪后的最新问答生成 JSON 追问建议；用户可在个人 LLM 设置中关闭该能力，或单独指定轻量模型；
   同一来源消息只保存一份，重复回调直接命中缓存。失败不会把主回答判为失败。
 - Function Tools 包括合并起卦信息、请求为已有排盘生成首次正式解读、
   取消未完成流程、读取当前/指定卦例、列出最近卦例；

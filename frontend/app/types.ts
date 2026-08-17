@@ -91,6 +91,7 @@ export interface UserLLMSettings {
   api_key_last4: string;
   model: string;
   analyst_model: string | null;
+  suggestion_enabled: boolean;
   suggestion_model: string | null;
   memory_model: string | null;
   timeout_seconds: number;
@@ -104,6 +105,7 @@ export interface UserLLMSettingsInput {
   api_key?: string;
   model: string;
   analyst_model?: string | null;
+  suggestion_enabled?: boolean;
   suggestion_model?: string | null;
   memory_model?: string | null;
   timeout_seconds?: number;

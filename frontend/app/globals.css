@@ -2965,6 +2965,69 @@ fieldset {
   grid-column: 1 / -1;
 }
 
+.llm-feature-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 248, 0.5);
+}
+
+.llm-feature-setting > div {
+  display: grid;
+  gap: 4px;
+}
+
+.llm-feature-setting strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.llm-feature-setting > div > span {
+  color: #8f877c;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.llm-feature-switch {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 7px;
+  padding: 5px 8px 5px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(91, 84, 76, 0.06);
+  color: #8f877c;
+  font-size: 10px;
+}
+
+.llm-feature-switch i {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #aaa196;
+  box-shadow: 0 1px 3px rgba(50, 42, 35, 0.2);
+}
+
+.llm-feature-switch.active {
+  border-color: rgba(166, 56, 45, 0.25);
+  background: rgba(166, 56, 45, 0.08);
+  color: var(--cinnabar);
+}
+
+.llm-feature-switch.active i {
+  background: var(--cinnabar);
+}
+
+.account-form label.llm-setting-disabled {
+  opacity: 0.48;
+}
+
 .account-primary,
 .account-secondary {
   min-height: 41px;
