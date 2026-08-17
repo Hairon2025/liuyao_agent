@@ -2081,6 +2081,7 @@ fieldset {
 .chat-header > div:nth-child(2) {
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .chat-header h1 {
@@ -2106,7 +2107,9 @@ fieldset {
 }
 
 .chat-header-actions {
+  min-width: 0;
   display: flex;
+  flex: 0 0 auto;
   gap: 7px;
 }
 
@@ -2124,8 +2127,11 @@ fieldset {
 }
 
 .chat-message-scroll {
+  width: 100%;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -2133,12 +2139,16 @@ fieldset {
 
 .chat-message-list {
   width: min(980px, 100%);
+  max-width: 100%;
+  min-width: 0;
   min-height: 100%;
   margin: 0 auto;
   padding: 38px clamp(22px, 4vw, 62px) 32px;
 }
 
 .chat-message {
+  max-width: 100%;
+  min-width: 0;
   display: block;
   margin-bottom: 28px;
 }
@@ -2149,6 +2159,8 @@ fieldset {
 }
 
 .chat-message.user > div {
+  max-width: 100%;
+  min-width: 0;
   padding: 13px 17px;
   border: 1px solid rgba(70, 103, 90, 0.18);
   border-radius: 17px 4px 17px 17px;
@@ -2162,6 +2174,8 @@ fieldset {
   font-family: "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
   font-size: 13px;
   line-height: 1.8;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   white-space: pre-wrap;
 }
 
@@ -2171,6 +2185,8 @@ fieldset {
 
 .chat-message.assistant > div {
   position: relative;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   padding: 21px clamp(18px, 3vw, 27px) 23px;
   overflow: hidden;
@@ -2254,12 +2270,20 @@ fieldset {
 }
 
 .chat-markdown {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   color: #38342e;
   font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.9;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown > * {
+  max-width: 100%;
+  min-width: 0;
 }
 
 .chat-markdown > :first-child {
@@ -2288,6 +2312,9 @@ fieldset {
   color: #332f29;
   font-family: "Noto Serif SC", "Songti SC", "STSong", serif;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .chat-markdown h1 {
@@ -2440,6 +2467,8 @@ fieldset {
 
 .chat-markdown a {
   color: var(--jade);
+  overflow-wrap: anywhere;
+  word-break: break-all;
   text-decoration-color: rgba(70, 103, 90, 0.35);
   text-underline-offset: 3px;
 }
@@ -2451,6 +2480,13 @@ fieldset {
   background: rgba(233, 226, 212, 0.65);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.88em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown img {
+  max-width: 100%;
+  height: auto;
 }
 
 .chat-markdown pre {
@@ -3107,7 +3143,8 @@ fieldset {
 
 .toast {
   position: fixed;
-  z-index: 100;
+  /* 高于账户弹窗遮罩，保存失败和连接测试结果也始终可见。 */
+  z-index: 160;
   right: 26px;
   bottom: 26px;
   max-width: min(380px, calc(100vw - 36px));

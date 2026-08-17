@@ -563,7 +563,9 @@ export function ChatView({
           </button>
           <div>
             <span className="eyebrow">多轮问卦</span>
-            <h1>{current?.title || "问易"}</h1>
+            <h1 title={current?.title || "问易"}>
+              {current?.title || "问易"}
+            </h1>
             <p>
               {current?.active_divination_id
                 ? `当前卦例 · ${current.active_divination_id}`

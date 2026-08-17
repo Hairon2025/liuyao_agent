@@ -122,6 +122,8 @@ export function AccountDialog({
       onSettingsChange(saved);
       setForm(settingsToForm(saved));
       onNotify("LLM 设置已保存");
+      // 手机端 Toast 容易被键盘和弹窗忽略，保存成功后直接回到主页面。
+      onClose();
     } catch (error) {
       onNotify(error instanceof Error ? error.message : "LLM 设置保存失败");
     } finally {
