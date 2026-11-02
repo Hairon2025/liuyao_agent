@@ -6,7 +6,9 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim}
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.12-slim-bookworm}
+        APT_MIRROR: ${APT_MIRROR:-https://mirrors.aliyun.com/debian}
+        APT_SECURITY_MIRROR: ${APT_SECURITY_MIRROR:-https://mirrors.aliyun.com/debian-security}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple}
     env_file:
       - deploy/backend.env
@@ -34,6 +36,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:22-alpine}
+        APK_MIRROR: ${APK_MIRROR:-https://mirrors.aliyun.com/alpine}
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
         NEXT_PUBLIC_API_BASE_URL: /api
     expose:
@@ -58,6 +61,7 @@ services:
       dockerfile: deploy/Caddy.Dockerfile
       args:
         CADDY_BASE_IMAGE: ${CADDY_IMAGE:-caddy:2-alpine}
+        APK_MIRROR: ${APK_MIRROR:-https://mirrors.aliyun.com/alpine}
     environment:
       TZ: Asia/Shanghai
     depends_on:

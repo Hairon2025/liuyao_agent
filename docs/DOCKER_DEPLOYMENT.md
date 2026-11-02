@@ -79,16 +79,42 @@ python -m alembic -c backend/alembic.ini upgrade head
 
 构建时默认使用以下国内依赖源：
 
+- Debian 系统包：阿里云 Debian 镜像；
+- Alpine 系统包：阿里云 Alpine 镜像；
 - Python：清华大学 PyPI 镜像；
 - Node.js：阿里 `npmmirror`。
+
+后端基础镜像固定为 `python:3.12-slim-bookworm`，避免上游 `slim` 标签切换
+Debian 版本后，软件源格式和包版本在没有修改代码的情况下发生变化。
 
 如需临时恢复官方依赖源，可以执行：
 
 ```bash
+APT_MIRROR=http://deb.debian.org/debian \
+APT_SECURITY_MIRROR=http://deb.debian.org/debian-security \
+APK_MIRROR=https://dl-cdn.alpinelinux.org/alpine \
 PIP_INDEX_URL=https://pypi.org/simple \
 NPM_REGISTRY=https://registry.npmjs.org \
 docker compose build
 ```
+
+如果云服务器访问阿里源较慢，也可以切换清华 Debian/Alpine 镜像：
+
+```bash
+APT_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian \
+APT_SECURITY_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/debian-security \
+APK_MIRROR=https://mirrors.tuna.tsinghua.edu.cn/alpine \
+docker compose build
+```
+
+查看完整构建进度，确认具体卡在哪个网络请求：
+
+```bash
+docker compose build --progress=plain backend
+```
+
+后端 `apt` 安装层设置了 30 秒单次连接超时、5 次自动重试，并使用 BuildKit
+缓存 Debian 索引和安装包。因此短暂网络抖动会自动恢复，后续重建也会更快。
 
 ## 4. 验证
 
@@ -277,10 +303,34 @@ NODE_BASE_IMAGE
 CADDY_IMAGE
 ```
 
-未设置时始终使用官方 `python:3.12-slim`、`node:22-alpine` 和
+未设置时始终使用官方 `python:3.12-slim-bookworm`、`node:22-alpine` 和
 `caddy:2-alpine`。
 
 这里的基础镜像源与 Python/npm 依赖源是两回事：Dockerfile 中的清华源和阿里源
-只能加速 `pip install` 与 `npm ci`，不能加速 `FROM python/node` 或拉取 Caddy。
+只能加速 `apt`、`apk`、`pip install` 与 `npm ci`，不能加速
+`FROM python/node` 或拉取 Caddy。
 基础镜像下载较慢时，应配置服务器 Docker daemon 的 Registry Mirror，或者通过
 上面的三个环境变量指定云厂商提供的镜像地址。
+
+### 后端构建卡在 `apt-get update`
+
+当前 Dockerfile 默认使用阿里 Debian 镜像，并带有超时、重试和缓存。如果仍然
+超时，先显示完整日志：
+
+```bash
+docker compose build --progress=plain backend
+```
+
+BuildKit 输出中的 `CANCELED` 不一定是根因：并行构建时，只要另一个服务先出现
+`ERROR`，仍在运行的后端步骤也会被标记为 `CANCELED`。应从完整日志中找到最早的
+`ERROR`；单独构建 `backend` 可以排除其他服务的干扰。
+
+再测试服务器能否访问镜像站：
+
+```bash
+curl -I --connect-timeout 10 https://mirrors.aliyun.com/debian/dists/bookworm/InRelease
+```
+
+如果阿里源不可达，按第 3 节的命令临时切换清华源。若两个国内镜像都不可达，
+通常是服务器 DNS、出站 HTTPS（443 端口）或代理配置问题，而不是 Dockerfile
+本身；此时应先检查云服务器的出站规则和 `/etc/resolv.conf`。

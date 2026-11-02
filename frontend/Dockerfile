@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 ARG NODE_BASE_IMAGE=node:22-alpine
 FROM ${NODE_BASE_IMAGE} AS builder
 
@@ -20,6 +22,9 @@ RUN npm run build
 
 FROM ${NODE_BASE_IMAGE} AS runtime
 
+# Alpine 系统包与 npm 使用不同的软件源。国内服务器默认使用阿里 Alpine 镜像。
+ARG APK_MIRROR=https://mirrors.aliyun.com/alpine
+
 # 生产容器监听所有网卡上的 3000 端口，但仅在 Docker 内部网络暴露。
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
@@ -29,7 +34,11 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 # 安装东八区时区数据，确保 Node 服务端日志使用北京时间。
-RUN apk add --no-cache tzdata \
+RUN sed -i \
+        -e "s|https://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR}|g" \
+        -e "s|http://dl-cdn.alpinelinux.org/alpine|${APK_MIRROR}|g" \
+        /etc/apk/repositories \
+    && apk add --no-cache --no-progress tzdata \
     && ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
     && echo "Asia/Shanghai" > /etc/timezone
 
