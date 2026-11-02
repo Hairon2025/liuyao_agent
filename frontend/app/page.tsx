@@ -20,6 +20,7 @@ import {
   type ChatLaunchRequest,
 } from "./components/chat/ChatView";
 import { DivinationChatAction } from "./components/chat/DivinationChatAction";
+import { HelpView } from "./components/HelpView";
 import type {
   DivinationResponse,
   HexagramInfo,
@@ -42,10 +43,10 @@ const METHOD_OPTIONS: Array<{
 ];
 
 const YAO_OPTIONS = [
-  { value: 1, label: "少阴", symbol: "⚋", note: "静" },
-  { value: 2, label: "少阳", symbol: "⚊", note: "静" },
-  { value: 3, label: "老阳", symbol: "⚊", note: "动" },
-  { value: 4, label: "老阴", symbol: "⚋", note: "动" },
+  { value: 1, label: "少阴", symbol: "⚋", note: "静 · 1字2花" },
+  { value: 2, label: "少阳", symbol: "⚊", note: "静 · 2字1花" },
+  { value: 3, label: "老阳", symbol: "⚊", note: "动 · 3花" },
+  { value: 4, label: "老阴", symbol: "⚋", note: "动 · 3字" },
 ];
 
 const POSITION_NAMES: Record<number, string> = {
@@ -76,7 +77,7 @@ interface CoinRound {
 }
 
 type ResultTab = "paipan" | "texts" | "interpretation";
-type AppView = "workspace" | "chat" | "history";
+type AppView = "workspace" | "chat" | "history" | "help";
 
 const DEFAULT_DISCLAIMER =
   "本结果仅供文化娱乐参考，不构成任何人生决策依据。";
@@ -874,6 +875,13 @@ export default function Home() {
     showToast("API 地址已保存");
   }
 
+  function openAccountPanel() {
+    setAccountMode(
+      currentUser?.user_type === "registered" ? "settings" : "login",
+    );
+    setAccountOpen(true);
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -912,6 +920,13 @@ export default function Home() {
           >
             历史卦例
           </button>
+          <button
+            type="button"
+            className={view === "help" ? "active" : ""}
+            onClick={() => setView("help")}
+          >
+            帮助
+          </button>
         </nav>
 
         <div className="topbar-actions">
@@ -928,12 +943,7 @@ export default function Home() {
             className={`account-trigger ${
               currentUser?.user_type === "registered" ? "registered" : ""
             }`}
-            onClick={() => {
-              setAccountMode(
-                currentUser?.user_type === "registered" ? "settings" : "login",
-              );
-              setAccountOpen(true);
-            }}
+            onClick={openAccountPanel}
           >
             <svg
               className="account-trigger-icon"
@@ -1393,6 +1403,11 @@ export default function Home() {
           onLaunchConsumed={consumeChatLaunch}
           onOpenDivination={(id) => void openDivinationFromChat(id)}
           onNotify={showToast}
+        />
+      ) : view === "help" ? (
+        <HelpView
+          onStart={() => setView("workspace")}
+          onOpenSettings={openAccountPanel}
         />
       ) : (
         <main className="history-page">

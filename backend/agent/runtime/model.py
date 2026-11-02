@@ -2,10 +2,23 @@
 from __future__ import annotations
 
 from openai import AsyncOpenAI
-from agents import OpenAIChatCompletionsModel
+from agents import ModelSettings, OpenAIChatCompletionsModel
 from agents.models.interface import Model
+from openai.types.shared.reasoning import Reasoning
 
 from backend.config.settings import settings
+
+
+def non_thinking_model_settings() -> ModelSettings:
+    """为无需复杂推理的角色显式关闭 DeepSeek 思考模式。
+
+    同时设置 OpenAI-compatible 的 ``reasoning_effort`` 与 DeepSeek 专用
+    ``thinking`` 参数，确保不同兼容层都不会回退到默认的 high thinking。
+    """
+    return ModelSettings(
+        reasoning=Reasoning(effort="none"),
+        extra_body={"thinking": {"type": "disabled"}},
+    )
 
 
 class AgentModelFactory:

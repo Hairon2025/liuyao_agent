@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncIterator
 
-from agents import Agent, RawResponsesStreamEvent, Runner
+from agents import Agent, ModelSettings, RawResponsesStreamEvent, RunConfig, Runner
 from openai.types.responses import ResponseTextDeltaEvent
 
 from backend.agent.runtime.model import AgentModelFactory
@@ -22,6 +22,7 @@ class BaseAgent:
         model_factory: AgentModelFactory | None = None,
         usage_recorder: LLMUsageRecorder | None = None,
         agent_role: str | None = None,
+        model_settings: ModelSettings | None = None,
     ):
         self.name = name
         self._model_factory = model_factory or AgentModelFactory()
@@ -32,12 +33,17 @@ class BaseAgent:
             name=name,
             model=self._model_factory.create(),
             instructions=instructions,
+            model_settings=model_settings,
         )
 
     async def chat(self, user_input: str) -> str:
         started = time.perf_counter()
         try:
-            result = await Runner.run(self.agent, user_input)
+            result = await Runner.run(
+                self.agent,
+                user_input,
+                run_config=RunConfig(tracing_disabled=True),
+            )
         except Exception:
             await self._record(started, status="failed", error_code="model_error")
             raise
@@ -50,7 +56,11 @@ class BaseAgent:
 
     async def chat_stream(self, user_input: str) -> AsyncIterator[str]:
         started = time.perf_counter()
-        result = Runner.run_streamed(self.agent, user_input)
+        result = Runner.run_streamed(
+            self.agent,
+            user_input,
+            run_config=RunConfig(tracing_disabled=True),
+        )
         try:
             async for event in result.stream_events():
                 if (

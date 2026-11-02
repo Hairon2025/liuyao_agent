@@ -6,7 +6,10 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from backend.agent.base_agent import BaseAgent
-from backend.agent.runtime.model import AgentModelFactory
+from backend.agent.runtime.model import (
+    AgentModelFactory,
+    non_thinking_model_settings,
+)
 from backend.services.llm_usage import LLMUsageRecorder
 
 _PROMPT_FILE = Path(__file__).parent / "prompt" / "liuyao_analyst.txt"
@@ -29,6 +32,7 @@ class LiuYaoAnalyst(BaseAgent):
             model_factory=model_factory,
             usage_recorder=usage_recorder,
             agent_role="analyst",
+            model_settings=non_thinking_model_settings(),
         )
 
     async def interpret(self, markdown_content: str) -> str:

@@ -9,7 +9,10 @@ from pathlib import Path
 from agents import Agent, Runner
 from agents.run import RunConfig
 
-from backend.agent.runtime.model import AgentModelFactory
+from backend.agent.runtime.model import (
+    AgentModelFactory,
+    non_thinking_model_settings,
+)
 from backend.schema.agent.suggestion import SuggestedQuestions
 from backend.services.llm_usage import LLMUsageRecorder
 
@@ -57,6 +60,7 @@ class SuggestedQuestionAgent:
                 name="suggested_question_agent",
                 model=self._model_factory.create(),
                 instructions=_PROMPT_FILE.read_text(encoding="utf-8"),
+                model_settings=non_thinking_model_settings(),
             )
         started = time.perf_counter()
         try:
