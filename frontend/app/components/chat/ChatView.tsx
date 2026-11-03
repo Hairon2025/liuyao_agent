@@ -39,6 +39,37 @@ const DIVINATION_QUICK_QUESTIONS = [
   "这个卦对我所问的事情有哪些关键提醒？",
 ];
 
+/**
+ * 生成后端要求的 UUID v4。
+ *
+ * 公网 IP 的纯 HTTP 页面不属于安全上下文，部分浏览器不会提供
+ * crypto.randomUUID()，但发送消息不应因此在 fetch 前静默失败。
+ * getRandomValues 在可用时仍用于生成随机字节；极老浏览器才退回 Math.random。
+ */
+function createClientRequestId() {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  if (typeof cryptoApi?.getRandomValues === "function") {
+    cryptoApi.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  // RFC 4122 UUID v4：版本位为 0100，变体位为 10。
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function ChatView({
   apiBase,
   userId,
@@ -437,7 +468,7 @@ export function ChatView({
     let completedMessageId: string | null = null;
 
     const controller = new AbortController();
-    const requestId = crypto.randomUUID();
+    const requestId = createClientRequestId();
     abortRef.current?.abort();
     abortRef.current = controller;
     activeRunRef.current = {
