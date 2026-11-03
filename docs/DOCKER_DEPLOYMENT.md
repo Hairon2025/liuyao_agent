@@ -334,3 +334,47 @@ curl -I --connect-timeout 10 https://mirrors.aliyun.com/debian/dists/bookworm/In
 如果阿里源不可达，按第 3 节的命令临时切换清华源。若两个国内镜像都不可达，
 通常是服务器 DNS、出站 HTTPS（443 端口）或代理配置问题，而不是 Dockerfile
 本身；此时应先检查云服务器的出站规则和 `/etc/resolv.conf`。
+
+### 构建提示 `No space left on device`
+
+这表示 Docker 数据目录或服务器根分区空间不足，不是 pip 软件源错误。先检查磁盘、
+inode 和 Docker 占用：
+
+```bash
+df -h
+df -i
+docker system df
+```
+
+优先只清理可以重新生成的 BuildKit 构建缓存和悬空镜像：
+
+```bash
+docker builder prune -af
+docker image prune -f
+docker system df
+df -h
+```
+
+如果空间仍然不足，可以查看所有未被容器使用的旧镜像；确认不需要回滚旧版本后再
+执行第二条命令：
+
+```bash
+docker image ls
+docker image prune -af
+```
+
+不要执行 `docker volume prune` 或 `docker compose down -v`，它们可能删除保存
+SQLite 和用户 LLM 密钥的 `liuyao_data` 数据卷。服务器上还运行其他项目时，
+也不要直接执行范围更大的 `docker system prune -af`。
+
+清理后按服务顺序构建，避免三个服务并行构建造成更高的瞬时磁盘占用：
+
+```bash
+docker compose build --progress=plain backend
+docker compose build --progress=plain frontend
+docker compose build --progress=plain caddy
+docker compose up -d
+```
+
+建议构建前至少保留数 GB 可用空间；如果清理后仍不足，应扩容云硬盘或把 Docker
+数据目录迁移到容量更大的挂载盘，而不是继续反复构建。

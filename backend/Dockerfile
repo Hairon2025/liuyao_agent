@@ -55,7 +55,14 @@ RUN groupadd --gid 10001 app \
 
 # 先复制依赖清单，业务代码变化时可以复用依赖安装缓存。
 COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+# 不保留下载缓存、不生成 .pyc，并优先安装 wheel，减少镜像体积及源码编译的
+# 临时磁盘占用。依赖安装仍需要可用空间，磁盘已满时应先清理 BuildKit 缓存。
+RUN pip install \
+        --no-cache-dir \
+        --no-compile \
+        --prefer-binary \
+        -r /tmp/requirements.txt \
+    && rm -f /tmp/requirements.txt
 
 # 保留 backend 包目录，使容器内仍可通过 backend.xxx 进行绝对导入。
 COPY --chown=app:app backend /app/backend
